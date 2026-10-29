@@ -74,6 +74,37 @@ pnpm start:web --open
 
 修改代码或更新工程后使用不带 `--no-build` 的命令。脚本使用调试构建，便于本地运行；生产部署仍建议使用下面的 release 构建和 systemd 服务。
 
+## 一键部署（Ubuntu 22.04 / x86_64）
+
+在以 systemd 运行的 Ubuntu 22.04 x86_64 服务器上，以**拥有目标 CLI 配置的普通用户**登录（需要 sudo 权限），在完整源码根目录执行：
+
+```bash
+bash deploy-web.sh
+```
+
+无需预先安装 Node.js、pnpm、Rust 或图形桌面。脚本自动安装系统依赖，将仓库指定版本的 Node.js 和 pnpm 放入用户的独立工具目录，通过官方 rustup 准备 Rust，构建 release 版本，然后安装 `cc-switch-web.service`，启动服务并配置开机自启。脚本不替换系统 Node.js，也不修改 shell 启动文件。下载、构建和应用在线安装需要服务器能够访问对应的外网服务；首次 Rust 编译耗时较长，需要预留编译所用内存和磁盘。
+
+安装路径为 `~/.local/share/cc-switch-web/`，数据仍为 `~/.cc-switch-web/`。访问令牌位于 `~/.cc-switch-web/web-access-token`，服务环境文件 `web-service.env` 包含同一令牌；两个文件均限制为 `0600`。已有令牌不会重置，已有数据库不会被脚本覆盖。正常服务启动仍执行前文说明的独立 Web 库导入及升级流程。
+
+脚本默认监听 `127.0.0.1:8080`。在自己电脑上执行 SSH 隧道命令，再访问 `http://127.0.0.1:8080`：
+
+```bash
+ssh -L 8080:127.0.0.1:8080 your-user@your-linux-host
+```
+
+服务后台运行，无需保持部署终端打开。常用维护命令：
+
+```bash
+sudo systemctl status cc-switch-web
+sudo journalctl -u cc-switch-web -n 50 --no-pager
+sudo systemctl restart cc-switch-web
+sudo systemctl stop cc-switch-web
+```
+
+更新时在原源码目录执行 `git pull --ff-only` 后再次运行 `bash deploy-web.sh`。构建完成前不停止已有服务；构建成功后停止旧服务并切换到新版本，随后进行鉴权就绪检查。若切换后启动失败，脚本返回错误并提示查看日志，不自动回滚数据库。旧版本程序保存在安装目录的 `releases/` 中，不会自动删除。
+
+当前脚本仅支持上述系统和架构，不配置 Docker、域名、HTTPS 或公网防火墙。使用反向代理时按下文配置 HTTPS 和同源访问；不要直接将管理令牌用于公网明文 HTTP。
+
 ## 手动构建与运行
 
 在仓库根目录执行。Node、pnpm、Rust 版本沿用仓库要求。Debian/Ubuntu 构建依赖沿用 `CONTRIBUTING.md`：

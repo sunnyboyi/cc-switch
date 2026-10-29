@@ -7,6 +7,8 @@ on:
       - "web/**"
       - "web-server/**"
       - "scripts/start-web*"
+      - "scripts/deploy-web*"
+      - "deploy-web.sh"
       - "start-web.bat"
       - "start-web.sh"
       - "src-tauri/**"
@@ -25,6 +27,8 @@ on:
       - "web/**"
       - "web-server/**"
       - "scripts/start-web*"
+      - "scripts/deploy-web*"
+      - "deploy-web.sh"
       - "start-web.bat"
       - "start-web.sh"
       - "src-tauri/**"
@@ -102,9 +106,11 @@ jobs:
           pnpm typecheck
           pnpm test:web
           pnpm test:web-launcher
+          pnpm test:web-deploy
           sh -n start-web.sh
+          bash -n deploy-web.sh
           pnpm build:web
-          pnpm exec prettier --check web scripts/start-web.mjs scripts/start-web.test.mjs
+          pnpm exec prettier --check web scripts/start-web.mjs scripts/start-web.test.mjs scripts/deploy-web.test.mjs
       - name: Backend checks without a display server
         run: |
           mkdir -p dist

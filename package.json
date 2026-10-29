@@ -12,6 +12,7 @@
     "dev:web": "vite --config web/vite.config.ts",
     "start:web": "node scripts/start-web.mjs",
     "test:web-launcher": "node --test scripts/start-web.test.mjs",
+    "test:web-deploy": "node --test scripts/deploy-web.test.mjs",
     "build:web": "tsc --project web/tsconfig.json && vite build --config web/vite.config.ts",
     "test:web": "vitest run --config web/vitest.config.ts",
     "typecheck": "tsc --noEmit",
