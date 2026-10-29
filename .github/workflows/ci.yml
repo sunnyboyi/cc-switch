@@ -105,7 +105,7 @@ jobs:
         run: pnpm format:check
 
       - name: Unit tests
-        run: pnpm test:unit
+        run: pnpm test:unit --maxWorkers=2 --minWorkers=1
 
       - name: Build frontend
         run: pnpm build:renderer

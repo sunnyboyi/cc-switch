@@ -62,6 +62,8 @@ jobs:
           node-version-file: .node-version
       - name: Setup pnpm
         run: |
+          # Node 22.12 bundles Corepack with an outdated npm signing-key set.
+          npm install --global corepack@0.31.0
           corepack enable
           corepack install
       - name: Get pnpm store directory
