@@ -9,9 +9,15 @@ import {
   useUnsavedChangesTracker,
 } from "@/lib/unsavedChanges";
 
-function Editor({ enabled = true }: { enabled?: boolean }) {
+function Editor({
+  enabled = true,
+  savedRevision = 0,
+}: {
+  enabled?: boolean;
+  savedRevision?: number;
+}) {
   return (
-    <div {...useUnsavedChangesTracker(enabled)}>
+    <div {...useUnsavedChangesTracker(enabled, savedRevision)}>
       <input aria-label="name" />
       <button type="button" role="checkbox" aria-checked="false">
         claude
@@ -45,6 +51,16 @@ describe("unsaved changes tracker", () => {
     expect(hasUnsavedChanges()).toBe(true);
     view.unmount();
     expect(hasUnsavedChanges()).toBe(false);
+  });
+
+  it("clears saved edits and continues tracking the next edit", () => {
+    const view = render(<Editor />);
+    fireEvent.input(screen.getByRole("textbox", { name: "name" }));
+    expect(hasUnsavedChanges()).toBe(true);
+    view.rerender(<Editor savedRevision={1} />);
+    expect(hasUnsavedChanges()).toBe(false);
+    fireEvent.input(screen.getByRole("textbox", { name: "name" }));
+    expect(hasUnsavedChanges()).toBe(true);
   });
 
   it("does nothing while disabled and forgets edits once disabled", () => {

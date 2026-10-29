@@ -512,7 +512,7 @@ impl Database {
     where
         F: FnOnce(&Path, &Path) -> Result<(), AppError>,
     {
-        let db_path = get_app_config_dir().join("cc-switch.db");
+        let db_path = crate::config::get_database_path();
         if !db_path.exists() {
             return Ok(None);
         }

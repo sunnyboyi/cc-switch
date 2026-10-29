@@ -27,7 +27,9 @@ const MANAGED_AUTH_PROVIDERS: ManagedAuthProvider[] = [
 /**
  * 侧栏需要的状态：每个应用的模式标签和提醒、今日花费与 Token、授权中心是否有账号要重新登录。
  */
-export function useSidebarStatus() {
+export function useSidebarStatus({
+  authEnabled = true,
+}: { authEnabled?: boolean } = {}) {
   const { data: proxyStatus } = useProxyStatusQuery();
   // 和应用页的模式行同一份数据（["providers", app, "mode"]），进出模式时一起刷新
   const modeQueries = useQueries({
@@ -45,6 +47,7 @@ export function useSidebarStatus() {
       queryKey: ["managed-auth-status", provider],
       queryFn: () => authApi.authGetStatus(provider),
       staleTime: 60_000,
+      enabled: authEnabled,
     })),
   });
 

@@ -28,7 +28,13 @@ interface UpdateContextValue {
 
 const UpdateContext = createContext<UpdateContextValue | undefined>(undefined);
 
-export function UpdateProvider({ children }: { children: React.ReactNode }) {
+export function UpdateProvider({
+  children,
+  enabled = true,
+}: {
+  children: React.ReactNode;
+  enabled?: boolean;
+}) {
   const DISMISSED_VERSION_KEY = "ccswitch:update:dismissedVersion";
   const LEGACY_DISMISSED_KEY = "dismissedUpdateVersion"; // 兼容旧键
 
@@ -118,13 +124,14 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
 
   // 应用启动时自动检查更新
   useEffect(() => {
+    if (!enabled) return;
     // 延迟1秒后检查，避免影响启动体验
     const timer = setTimeout(() => {
       checkUpdate().catch(console.error);
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [checkUpdate]);
+  }, [checkUpdate, enabled]);
 
   const value: UpdateContextValue = {
     hasUpdate,

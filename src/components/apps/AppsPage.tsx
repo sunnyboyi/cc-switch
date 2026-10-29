@@ -172,7 +172,9 @@ function formatCheckedAt(timestamp: number, locale: string): string {
  * 「应用」页（v7）：每个应用一行 = 安装状态 / 版本 + 安装 / 升级 + 在侧栏显示的开关 + 「⋯」菜单（卸载）。
  * 隐藏一个应用只影响界面（侧栏、MCP / Skills 的列、提示词和会话的下拉），配置照常同步。
  */
-export function AppsPage() {
+export function AppsPage({
+  availableApps,
+}: { availableApps?: readonly AppId[] } = {}) {
   const { t, i18n } = useTranslation();
   const tools = useToolManagement();
   const { settings, updateSettings, autoSaveSettings } = useSettings();
@@ -274,7 +276,10 @@ export function AppsPage() {
     ...DEFAULT_VISIBLE_APPS,
     ...settings?.visibleApps,
   };
-  const visibleCount = Object.values(visibleApps).filter(Boolean).length;
+  const visibleCount = Object.entries(visibleApps).filter(
+    ([app, visible]) =>
+      visible && (!availableApps || availableApps.includes(app as AppId)),
+  ).length;
 
   const setVisible = (app: AppId, visible: boolean) => {
     if (!settings) return;
@@ -292,9 +297,18 @@ export function AppsPage() {
     <Switch
       size="sm"
       checked={visibleApps[app]}
-      disabled={!settings || (visibleApps[app] && visibleCount <= 1)}
+      disabled={
+        !settings ||
+        (availableApps !== undefined && !availableApps.includes(app)) ||
+        (visibleApps[app] && visibleCount <= 1)
+      }
       onCheckedChange={(checked) => setVisible(app, checked)}
       aria-label={t("appsPage.showInSidebar", { name: APP_DISPLAY_NAME[app] })}
+      title={
+        availableApps && !availableApps.includes(app)
+          ? "Web 当前仅接入 Claude Code、Codex、Gemini CLI 的配置管理"
+          : undefined
+      }
     />
   );
 

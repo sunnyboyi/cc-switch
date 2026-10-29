@@ -1,0 +1,59 @@
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/* Browser controls must stay usable on touch screens and narrow remote clients. */
+.web-shell {
+  height: 100dvh;
+}
+
+.web-navigation {
+  flex-shrink: 0;
+  height: 100%;
+}
+.web-shell .web-menu {
+  display: none;
+}
+.web-nav-backdrop {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .web-shell .web-menu {
+    display: inline-flex;
+  }
+  .web-navigation {
+    display: none;
+  }
+  .web-navigation.is-open {
+    display: block;
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+  }
+  .web-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgb(0 0 0 / 35%);
+    z-index: 39;
+  }
+  .web-shell header {
+    padding-inline: 12px;
+    gap: 8px;
+  }
+  .web-shell header > div {
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

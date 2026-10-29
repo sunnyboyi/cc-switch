@@ -49,6 +49,7 @@ export function useManagedAuth(
     isError: isStatusError,
     refetch: refetchStatus,
   } = useQuery<ManagedAuthStatus>({
+    enabled: !import.meta.env.VITE_WEB_MODE,
     queryKey,
     queryFn: () => authApi.authGetStatus(authProvider),
     staleTime: 30000,

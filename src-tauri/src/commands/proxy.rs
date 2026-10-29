@@ -446,6 +446,15 @@ pub async fn reset_circuit_breaker(
     provider_id: String,
     app_type: String,
 ) -> Result<(), String> {
+    reset_circuit_breaker_for_state(Some(&app_handle), state.inner(), provider_id, app_type).await
+}
+
+pub(crate) async fn reset_circuit_breaker_for_state(
+    app_handle: Option<&tauri::AppHandle>,
+    state: &AppState,
+    provider_id: String,
+    app_type: String,
+) -> Result<(), String> {
     let app = require_proxy_app(&app_type)?;
     // 1. 重置数据库健康状态
     let db = &state.db;
@@ -511,7 +520,7 @@ pub async fn reset_circuit_breaker(
                     let switch_manager =
                         crate::proxy::failover_switch::FailoverSwitchManager::new();
                     if let Err(e) = switch_manager
-                        .try_switch(Some(&app_handle), &app_type, &provider_id, &provider_name)
+                        .try_switch(app_handle, &app_type, &provider_id, &provider_name)
                         .await
                     {
                         log::error!("[Recovery] 自动切换失败: {e}");

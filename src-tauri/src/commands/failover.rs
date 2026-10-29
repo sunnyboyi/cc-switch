@@ -8,7 +8,7 @@ use crate::store::AppState;
 use std::str::FromStr;
 use tauri::Emitter;
 
-fn require_failover_app(app_type: &str) -> Result<(), String> {
+pub(crate) fn require_failover_app(app_type: &str) -> Result<(), String> {
     let app = crate::app_config::AppType::from_str(app_type)
         .map_err(|error| format!("无效的应用类型: {error}"))?;
     if !app.supports_local_proxy() {
@@ -17,7 +17,7 @@ fn require_failover_app(app_type: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn require_failover_provider(
+pub(crate) fn require_failover_provider(
     db: &crate::database::Database,
     app_type: &str,
     provider_id: &str,
@@ -176,6 +176,15 @@ pub async fn set_auto_failover_enabled(
     app_type: String,
     enabled: bool,
 ) -> Result<(), String> {
+    set_auto_failover_for_state(Some(&app), state.inner(), app_type, enabled).await
+}
+
+pub(crate) async fn set_auto_failover_for_state(
+    app: Option<&tauri::AppHandle>,
+    state: &AppState,
+    app_type: String,
+    enabled: bool,
+) -> Result<(), String> {
     require_failover_app(&app_type)?;
     let app_enum = crate::app_config::AppType::from_str(&app_type)
         .map_err(|_| format!("无效的应用类型: {app_type}"))?;
@@ -266,12 +275,9 @@ pub async fn set_auto_failover_enabled(
     // 避免 P1 不可切换（例如 official provider）时留下“开关已开但目标未切”的脏状态。
     // Stack 模式不做故障转移，切换在锁内拒绝（见 `switch_route_for_failover`）。
     if enabled {
-        if let Err(e) = crate::mode::controller::switch_route_for_failover(
-            state.inner(),
-            &app_enum,
-            &p1_provider_id,
-        )
-        .await
+        if let Err(e) =
+            crate::mode::controller::switch_route_for_failover(state, &app_enum, &p1_provider_id)
+                .await
         {
             if let Some(provider_id) = auto_added_provider_id {
                 let _ = state.db.remove_from_failover_queue(&app_type, &provider_id);
@@ -298,11 +304,15 @@ pub async fn set_auto_failover_enabled(
             "providerId": p1_provider_id,
             "source": "failoverEnabled"
         });
-        let _ = app.emit("provider-switched", event_data);
+        if let Some(app) = app {
+            let _ = app.emit("provider-switched", event_data);
+        }
     }
 
     // 刷新托盘，确保状态同步（Linux 重建原生菜单，其它平台通知托盘面板，不挂原生菜单）
-    crate::tray::refresh_tray_menu(&app);
+    if let Some(app) = app {
+        crate::tray::refresh_tray_menu(app);
+    }
 
     Ok(())
 }

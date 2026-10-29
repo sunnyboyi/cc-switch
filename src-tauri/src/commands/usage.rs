@@ -184,11 +184,16 @@ pub async fn get_request_detail(
 /// 获取模型定价列表
 #[tauri::command]
 pub fn get_model_pricing(state: State<'_, AppState>) -> Result<Vec<ModelPricingInfo>, AppError> {
-    log::info!("获取模型定价列表");
-    state.db.ensure_model_pricing_seeded()?;
-    crate::services::model_pricing::sync_local_model_pricing(&state.db)?;
+    get_model_pricing_for_db(&state.db)
+}
 
-    let db = state.db.clone();
+pub(crate) fn get_model_pricing_for_db(
+    db: &crate::Database,
+) -> Result<Vec<ModelPricingInfo>, AppError> {
+    log::info!("获取模型定价列表");
+    db.ensure_model_pricing_seeded()?;
+    crate::services::model_pricing::sync_local_model_pricing(db)?;
+
     let conn = crate::database::lock_conn!(db.conn);
 
     // 检查表是否存在

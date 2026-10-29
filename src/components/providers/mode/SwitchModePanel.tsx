@@ -70,6 +70,8 @@ type ListCallbacks = Pick<
 >;
 
 interface SwitchModePanelProps extends ListCallbacks {
+  /** 独立入口可仅开放基础路由；桌面端默认保留聚合模式。 */
+  allowStack?: boolean;
   app: ModeAppId;
   statusSlot?: HTMLDivElement | null;
   providers: Record<string, Provider>;
@@ -99,6 +101,7 @@ const modesFor = (app: ModeAppId): AppMode[] =>
  * tab 只负责查看；要生效必须点写明后果的按钮（确认框），回到直连也一样。
  */
 export function SwitchModePanel({
+  allowStack = true,
   statusSlot,
   app,
   providers,
@@ -117,7 +120,7 @@ export function SwitchModePanel({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const appName = APP_DISPLAY_NAME[app];
-  const modes = modesFor(app);
+  const modes = modesFor(app).filter((mode) => allowStack || mode !== "stack");
 
   const { data: modeView } = useAppMode(app);
   const active: AppMode =
@@ -145,7 +148,7 @@ export function SwitchModePanel({
   const setFailover = useSetAutoFailoverEnabled();
   const addToQueue = useAddToFailoverQueue();
   const removeFromQueue = useRemoveFromFailoverQueue();
-  const { data: stack } = useProxyStack(app, isStackAppId(app));
+  const { data: stack } = useProxyStack(app, allowStack && isStackAppId(app));
   const setStackMember = useSetProxyStackMember();
   const adoptCatalog = useAdoptCodexStackCatalog();
   const modeActions = useModeActions(app);
@@ -672,7 +675,7 @@ export function SwitchModePanel({
         />
       )}
 
-      {app === "codex" && (
+      {allowStack && app === "codex" && (
         <StackSettingsSheet
           open={stackSettingsOpen}
           onOpenChange={setStackSettingsOpen}

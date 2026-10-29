@@ -63,7 +63,7 @@ interface ProviderCardProps {
   isCurrent: boolean;
   onEdit: (provider: Provider) => void;
   onDelete: (provider: Provider) => void;
-  onConfigureUsage: (provider: Provider) => void;
+  onConfigureUsage?: (provider: Provider) => void;
   onOpenWebsite: (url: string) => void;
   onDuplicate?: (provider: Provider) => void;
   onTest?: (provider: Provider) => void;
@@ -645,6 +645,7 @@ export function ProviderCard({
             }
             isTesting={isTesting}
             onConfigureUsage={
+              !onConfigureUsage ||
               (isOfficial && !supportsOfficialSubscription) ||
               isCopilot ||
               (isCodexOauth && !isBoundCodexOfficial) ||

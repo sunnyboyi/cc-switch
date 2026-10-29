@@ -309,8 +309,12 @@ pub fn get_claude_settings_path() -> PathBuf {
     settings
 }
 
-/// 获取应用配置目录路径 (~/.cc-switch)
+/// 获取当前入口的应用配置目录，桌面端默认为 ~/.cc-switch。
 pub fn get_app_config_dir() -> PathBuf {
+    #[cfg(feature = "web")]
+    if let Some(directory) = crate::web_storage::data_dir() {
+        return directory.to_path_buf();
+    }
     if let Some(custom) = crate::app_store::get_app_config_dir_override() {
         return custom;
     }
@@ -353,6 +357,23 @@ pub fn get_app_config_dir() -> PathBuf {
     }
 
     default_dir
+}
+
+/// Device-local settings and recovery state; desktop defaults stay unchanged.
+pub fn get_device_config_dir() -> PathBuf {
+    #[cfg(feature = "web")]
+    if let Some(directory) = crate::web_storage::data_dir() {
+        return directory.to_path_buf();
+    }
+    get_home_dir().join(".cc-switch")
+}
+
+pub fn get_database_path() -> PathBuf {
+    #[cfg(feature = "web")]
+    if crate::web_storage::data_dir().is_some() {
+        return get_app_config_dir().join(crate::web_storage::DATABASE_NAME);
+    }
+    get_app_config_dir().join("cc-switch.db")
 }
 
 /// 获取应用配置文件路径

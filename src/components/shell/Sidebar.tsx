@@ -62,6 +62,8 @@ interface SidebarProps {
   onExitSettings: () => void;
   /** 打开了「启动时检查应用更新」并且查到了新版本 */
   appsUpdateAvailable?: boolean;
+  /** 独立入口只展示其支持的页面；桌面入口缺省展示全部页面。 */
+  availablePages?: readonly (GlobalPage | "settings")[];
 }
 
 type DirectoryProps = SidebarProps & { collapsed: boolean };
@@ -215,6 +217,7 @@ function MainDirectory({
   onSelectApp,
   onSelectPage,
   appsUpdateAvailable = false,
+  availablePages,
 }: DirectoryProps) {
   const { t, i18n } = useTranslation();
   const { moneyShort } = useMoneyFormat();
@@ -227,7 +230,9 @@ function MainDirectory({
     todayRequests,
     todayHitRate,
     authNeedsAttention,
-  } = useSidebarStatus();
+  } = useSidebarStatus({
+    authEnabled: !availablePages || availablePages.includes("auth"),
+  });
   // 顺序跟应用页拖出来的一致
   const apps = orderAppIds(settings?.appOrder).filter(
     (app) => visibleApps[app],
@@ -330,19 +335,23 @@ function MainDirectory({
       />
 
       <div className="flex shrink-0 flex-col">
-        {globals.map((item) => (
-          <NavItem
-            key={item.page}
-            collapsed={collapsed}
-            selected={isGlobalSelected(item.page)}
-            icon={item.icon}
-            label={item.label}
-            trailing={item.trailing}
-            trailingLabel={item.trailingLabel}
-            alert={item.alert}
-            onClick={() => onSelectPage(item.page)}
-          />
-        ))}
+        {globals
+          .filter(
+            (item) => !availablePages || availablePages.includes(item.page),
+          )
+          .map((item) => (
+            <NavItem
+              key={item.page}
+              collapsed={collapsed}
+              selected={isGlobalSelected(item.page)}
+              icon={item.icon}
+              label={item.label}
+              trailing={item.trailing}
+              trailingLabel={item.trailingLabel}
+              alert={item.alert}
+              onClick={() => onSelectPage(item.page)}
+            />
+          ))}
       </div>
 
       {/* 和上面那条分隔线同样缩进、上下各留 6px，选中的最后一项不会贴着线 */}
@@ -360,29 +369,33 @@ function MainDirectory({
           collapsed ? "flex-col" : "gap-1 px-2",
         )}
       >
-        <NavItem
-          collapsed={collapsed}
-          compact={!collapsed}
-          selected={view === "apps"}
-          icon={LayoutGrid}
-          label={t("nav.apps")}
-          title={
-            appsUpdateAvailable ? t("nav.appsHasUpdate") : t("nav.appsTitle")
-          }
-          dot={appsUpdateAvailable}
-          onClick={() => onSelectPage("apps")}
-        />
-        <NavItem
-          collapsed={collapsed}
-          compact={!collapsed}
-          selected={false}
-          icon={Settings}
-          label={t("nav.settings")}
-          title={hasUpdate ? t("nav.settingsHasUpdate") : t("nav.settings")}
-          dot={hasUpdate}
-          dotTone="success"
-          onClick={() => onSelectPage("settings")}
-        />
+        {(!availablePages || availablePages.includes("apps")) && (
+          <NavItem
+            collapsed={collapsed}
+            compact={!collapsed}
+            selected={view === "apps"}
+            icon={LayoutGrid}
+            label={t("nav.apps")}
+            title={
+              appsUpdateAvailable ? t("nav.appsHasUpdate") : t("nav.appsTitle")
+            }
+            dot={appsUpdateAvailable}
+            onClick={() => onSelectPage("apps")}
+          />
+        )}
+        {(!availablePages || availablePages.includes("settings")) && (
+          <NavItem
+            collapsed={collapsed}
+            compact={!collapsed}
+            selected={false}
+            icon={Settings}
+            label={t("nav.settings")}
+            title={hasUpdate ? t("nav.settingsHasUpdate") : t("nav.settings")}
+            dot={hasUpdate}
+            dotTone="success"
+            onClick={() => onSelectPage("settings")}
+          />
+        )}
       </div>
     </>
   );

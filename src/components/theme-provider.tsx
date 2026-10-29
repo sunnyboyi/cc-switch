@@ -5,7 +5,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 
 type Theme = "light" | "dark" | "system";
 
@@ -113,7 +113,7 @@ export function ThemeProvider({
 
   // Sync native window theme (Windows/macOS title bar)
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || !isTauri()) {
       return;
     }
 

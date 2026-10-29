@@ -34,14 +34,14 @@ const EDIT_CONTROL_SELECTOR = [
  * React 的合成事件沿组件树冒泡，渲染到 body 的下拉选项也能收到。
  * `enabled` 为 false 时不登记（例如新增供应商还在选预设）。
  */
-export function useUnsavedChangesTracker(enabled = true) {
+export function useUnsavedChangesTracker(enabled = true, savedRevision = 0) {
   const token = useRef({}).current;
   useEffect(() => {
     if (!enabled) dirtyEditors.delete(token);
     return () => {
       dirtyEditors.delete(token);
     };
-  }, [enabled, token]);
+  }, [enabled, token, savedRevision]);
 
   const markDirty = useCallback(() => {
     if (enabled) dirtyEditors.add(token);

@@ -29,6 +29,7 @@ import {
 import { extractErrorMessage } from "@/utils/errorUtils";
 
 interface BackupListSectionProps {
+  showStorageOverview?: boolean;
   backupIntervalHours?: number;
   backupRetainCount?: number;
   onSettingsChange: (updates: {
@@ -61,6 +62,7 @@ function getDisplayName(filename: string): string {
 }
 
 export function BackupListSection({
+  showStorageOverview = true,
   backupIntervalHours,
   backupRetainCount,
   onSettingsChange,
@@ -411,7 +413,7 @@ export function BackupListSection({
         )}
       </div>
 
-      <BackupStorageSection />
+      {showStorageOverview && <BackupStorageSection />}
 
       {/* Restore Confirmation Dialog */}
       <Dialog

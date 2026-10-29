@@ -172,7 +172,14 @@ pub async fn restore_db_backup(
     state: State<'_, AppState>,
     filename: String,
 ) -> Result<String, String> {
-    let app_state_for_sync = state.inner().clone();
+    restore_db_backup_for_state(state.inner(), filename).await
+}
+
+pub async fn restore_db_backup_for_state(
+    state: &AppState,
+    filename: String,
+) -> Result<String, String> {
+    let app_state_for_sync = state.clone();
     let db = app_state_for_sync.db.clone();
     run_with_database_restore_lock(move || {
         tauri::async_runtime::spawn_blocking(move || {

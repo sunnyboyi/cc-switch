@@ -492,7 +492,7 @@ export function ProviderList({
       onDelete={onDelete}
       onDuplicate={onDuplicate}
       onConfigureUsage={
-        onConfigureUsage ? (item) => onConfigureUsage(item) : () => undefined
+        onConfigureUsage ? (item) => onConfigureUsage(item) : undefined
       }
       onOpenWebsite={onOpenWebsite}
       // Antigravity 的「打开终端」已经是主按钮，「更多」菜单里不再重复
@@ -648,7 +648,7 @@ interface SortableProviderCardProps {
   onEdit: (provider: Provider) => void;
   onDelete: (provider: Provider) => void;
   onDuplicate: (provider: Provider) => void;
-  onConfigureUsage: (provider: Provider) => void;
+  onConfigureUsage?: (provider: Provider) => void;
   onOpenWebsite: (url: string) => void;
   onOpenTerminal?: (provider: Provider) => void;
   onTest?: (provider: Provider) => void;

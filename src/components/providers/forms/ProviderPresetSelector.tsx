@@ -151,6 +151,15 @@ export function ProviderPresetSelector({
   onManageUniversalProviders,
   barAction,
 }: Readonly<ProviderPresetSelectorProps>) {
+  // Web 首期使用 API Key 配置，账号登录仍由原桌面端或 CLI 完成。
+  if (import.meta.env.VITE_WEB_MODE) {
+    presetEntries = presetEntries.filter(
+      ({ preset }) =>
+        preset.category !== "official" &&
+        !("requiresOAuth" in preset && preset.requiresOAuth) &&
+        !("providerType" in preset && preset.providerType),
+    );
+  }
   const step = usePresetStep();
   const registerSelector = step?.registerSelector;
   useEffect(() => registerSelector?.(), [registerSelector]);

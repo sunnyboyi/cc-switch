@@ -1,0 +1,56 @@
+name: Web management checks
+
+on:
+  pull_request:
+    paths:
+      - "web/**"
+      - "web-server/**"
+      - "scripts/start-web*"
+      - "start-web.bat"
+      - "start-web.sh"
+      - "src-tauri/**"
+      - "src/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "tailwind.config.cjs"
+      - "tsconfig*.json"
+      - "rust-toolchain.toml"
+      - ".github/workflows/web-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  web-linux:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    env:
+      DISPLAY: ""
+      WAYLAND_DISPLAY: ""
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+      - name: Install dependencies
+        run: |
+          corepack enable
+          corepack install
+          pnpm install --frozen-lockfile
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev \
+            libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev
+      - name: Frontend tests and build
+        run: |
+          pnpm typecheck
+          pnpm test:web
+          pnpm test:web-launcher
+          sh -n start-web.sh
+          pnpm build:web
+          pnpm exec prettier --check web scripts/start-web.mjs scripts/start-web.test.mjs
+      - name: Backend checks without a display server
+        run: |
+          mkdir -p dist
+          rustup component add rustfmt clippy
+          cargo fmt --manifest-path web-server/Cargo.toml --check
+          cargo clippy --locked --manifest-path web-server/Cargo.toml --all-targets -- -D warnings
+          cargo test --locked --manifest-path web-server/Cargo.toml

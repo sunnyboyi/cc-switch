@@ -31,12 +31,14 @@ const LANGUAGES: { value: Language; labelKey: string }[] = [
 ];
 
 interface GeneralSectionProps {
+  desktopControls?: boolean;
   settings: SettingsFormState;
   onAutoSave: (updates: Partial<SettingsFormState>) => Promise<boolean>;
   onOpenApps: () => void;
 }
 
 export function GeneralSection({
+  desktopControls = true,
   settings,
   onAutoSave,
   onOpenApps,
@@ -183,100 +185,102 @@ export function GeneralSection({
         </SettingsCard>
       </SettingsBlock>
 
-      <SettingsBlock title={t("settings.general.windowAndTerminal")}>
-        <SettingsCard>
-          <SettingsSwitchRow
-            label={t("settings.launchOnStartup")}
-            checked={!!settings.launchOnStartup}
-            onCheckedChange={(value) =>
-              void onAutoSave({ launchOnStartup: value })
-            }
-          />
-          {settings.launchOnStartup && (
+      {desktopControls && (
+        <SettingsBlock title={t("settings.general.windowAndTerminal")}>
+          <SettingsCard>
             <SettingsSwitchRow
-              label={t("settings.silentStartup")}
-              help={{
-                title: t("settings.silentStartup"),
-                body: t("settings.silentStartupDescription"),
-              }}
-              checked={!!settings.silentStartup}
+              label={t("settings.launchOnStartup")}
+              checked={!!settings.launchOnStartup}
               onCheckedChange={(value) =>
-                void onAutoSave({ silentStartup: value })
+                void onAutoSave({ launchOnStartup: value })
               }
             />
-          )}
-          <SettingsSwitchRow
-            label={t("settings.minimizeToTray")}
-            help={{
-              title: t("settings.minimizeToTray"),
-              body: t("settings.general.minimizeToTrayHelp"),
-            }}
-            checked={settings.minimizeToTrayOnClose}
-            onCheckedChange={(value) =>
-              void onAutoSave({ minimizeToTrayOnClose: value })
-            }
-          />
-          {/* Linux（AppIndicator）只能出原生菜单，没得选 */}
-          {!isLinux() && (
-            <SettingsRow
-              label={t("settings.general.trayStyle")}
+            {settings.launchOnStartup && (
+              <SettingsSwitchRow
+                label={t("settings.silentStartup")}
+                help={{
+                  title: t("settings.silentStartup"),
+                  body: t("settings.silentStartupDescription"),
+                }}
+                checked={!!settings.silentStartup}
+                onCheckedChange={(value) =>
+                  void onAutoSave({ silentStartup: value })
+                }
+              />
+            )}
+            <SettingsSwitchRow
+              label={t("settings.minimizeToTray")}
               help={{
-                title: t("settings.general.trayStyle"),
-                body: t("settings.general.trayStyleHelp"),
+                title: t("settings.minimizeToTray"),
+                body: t("settings.general.minimizeToTrayHelp"),
+              }}
+              checked={settings.minimizeToTrayOnClose}
+              onCheckedChange={(value) =>
+                void onAutoSave({ minimizeToTrayOnClose: value })
+              }
+            />
+            {/* Linux（AppIndicator）只能出原生菜单，没得选 */}
+            {!isLinux() && (
+              <SettingsRow
+                label={t("settings.general.trayStyle")}
+                help={{
+                  title: t("settings.general.trayStyle"),
+                  body: t("settings.general.trayStyleHelp"),
+                }}
+                control={
+                  <SegmentedControl
+                    size="sm"
+                    aria-label={t("settings.general.trayStyle")}
+                    value={settings.nativeTrayMenu ? "menu" : "panel"}
+                    onValueChange={(value) =>
+                      void onAutoSave({ nativeTrayMenu: value === "menu" })
+                    }
+                    items={[
+                      {
+                        value: "panel",
+                        label: t("settings.general.trayStylePanel"),
+                      },
+                      {
+                        value: "menu",
+                        label: t("settings.general.trayStyleMenu"),
+                      },
+                    ]}
+                  />
+                }
+              />
+            )}
+            {isLinux() && (
+              <SettingsSwitchRow
+                label={t("settings.useAppWindowControls")}
+                help={{
+                  title: t("settings.useAppWindowControls"),
+                  body: t("settings.useAppWindowControlsDescription"),
+                }}
+                checked={!!settings.useAppWindowControls}
+                onCheckedChange={(value) =>
+                  void onAutoSave({ useAppWindowControls: value })
+                }
+              />
+            )}
+            <SettingsRow
+              label={t("settings.terminal.title")}
+              help={{
+                title: t("settings.terminal.title"),
+                body: t("settings.general.terminalHelp"),
               }}
               control={
-                <SegmentedControl
-                  size="sm"
-                  aria-label={t("settings.general.trayStyle")}
-                  value={settings.nativeTrayMenu ? "menu" : "panel"}
-                  onValueChange={(value) =>
-                    void onAutoSave({ nativeTrayMenu: value === "menu" })
+                <TerminalSelect
+                  className="h-8 w-[160px]"
+                  value={settings.preferredTerminal}
+                  onChange={(terminal) =>
+                    void onAutoSave({ preferredTerminal: terminal })
                   }
-                  items={[
-                    {
-                      value: "panel",
-                      label: t("settings.general.trayStylePanel"),
-                    },
-                    {
-                      value: "menu",
-                      label: t("settings.general.trayStyleMenu"),
-                    },
-                  ]}
                 />
               }
             />
-          )}
-          {isLinux() && (
-            <SettingsSwitchRow
-              label={t("settings.useAppWindowControls")}
-              help={{
-                title: t("settings.useAppWindowControls"),
-                body: t("settings.useAppWindowControlsDescription"),
-              }}
-              checked={!!settings.useAppWindowControls}
-              onCheckedChange={(value) =>
-                void onAutoSave({ useAppWindowControls: value })
-              }
-            />
-          )}
-          <SettingsRow
-            label={t("settings.terminal.title")}
-            help={{
-              title: t("settings.terminal.title"),
-              body: t("settings.general.terminalHelp"),
-            }}
-            control={
-              <TerminalSelect
-                className="h-8 w-[160px]"
-                value={settings.preferredTerminal}
-                onChange={(terminal) =>
-                  void onAutoSave({ preferredTerminal: terminal })
-                }
-              />
-            }
-          />
-        </SettingsCard>
-      </SettingsBlock>
+          </SettingsCard>
+        </SettingsBlock>
+      )}
     </>
   );
 }
