@@ -47,7 +47,7 @@
 
 第一版直接链接现有 Rust 库，该库仍包含 Tauri/Wry 及 GTK/WebKit 依赖。**无需桌面会话不代表无需这些共享库。** 在 Linux 上构建及部署仍需原工程对应的平台依赖。这一版尚未将业务库抽成完全不依赖图形组件的 crate，避免为 Web 入口大幅改动原工程。
 
-当前开发验证环境是 Windows，Linux 构建与无显示器运行需在目标 Linux 上验证，不能视为已通过。独立的 `web-ci.yml` 会在相关 PR 或手动触发时，在清空 DISPLAY / WAYLAND_DISPLAY 的 Linux 环境中运行检查；该工作流尚未在本地执行。
+当前本地开发验证环境是 Windows。独立的 `web-ci.yml` 在相关改动推送到 `main`、提交 PR 或手动触发时，在清空 DISPLAY / WAYLAND_DISPLAY 的 Linux 环境中执行测试和构建，并实际启动服务验证鉴权、静态页面、独立数据库创建及正常退出。目标 Linux 的发行版与运行环境仍需部署时验证。
 
 ## 一键启动（源码工程）
 

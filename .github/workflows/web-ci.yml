@@ -1,6 +1,25 @@
 name: Web management checks
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "web-server/**"
+      - "scripts/start-web*"
+      - "start-web.bat"
+      - "start-web.sh"
+      - "src-tauri/**"
+      - "src/**"
+      - "tests/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".node-version"
+      - "tailwind.config.cjs"
+      - "tsconfig*.json"
+      - "rust-toolchain.toml"
+      - ".github/workflows/web-ci.yml"
   pull_request:
     paths:
       - "web/**"
@@ -10,35 +29,72 @@ on:
       - "start-web.sh"
       - "src-tauri/**"
       - "src/**"
+      - "tests/**"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".node-version"
       - "tailwind.config.cjs"
       - "tsconfig*.json"
       - "rust-toolchain.toml"
       - ".github/workflows/web-ci.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: web-ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   web-linux:
     runs-on: ubuntu-22.04
-    permissions:
-      contents: read
+    timeout-minutes: 45
     env:
       DISPLAY: ""
       WAYLAND_DISPLAY: ""
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version-file: .node-version
-      - name: Install dependencies
+      - name: Setup pnpm
         run: |
           corepack enable
           corepack install
+      - name: Get pnpm store directory
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+      - name: Install dependencies
+        run: |
           pnpm install --frozen-lockfile
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev \
             libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev
+      - name: Read pinned Rust toolchain
+        id: rust-toolchain
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          test -n "$channel"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ steps.rust-toolchain.outputs.channel }}
+          components: rustfmt, clippy
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: web-server -> target
+          shared-key: web-linux
       - name: Frontend tests and build
         run: |
           pnpm typecheck
@@ -50,7 +106,45 @@ jobs:
       - name: Backend checks without a display server
         run: |
           mkdir -p dist
-          rustup component add rustfmt clippy
+          cargo fmt --manifest-path src-tauri/Cargo.toml --check
           cargo fmt --manifest-path web-server/Cargo.toml --check
           cargo clippy --locked --manifest-path web-server/Cargo.toml --all-targets -- -D warnings
           cargo test --locked --manifest-path web-server/Cargo.toml
+      - name: Start the Web service without a display server
+        run: |
+          set -euo pipefail
+          cargo build --locked --manifest-path web-server/Cargo.toml
+          export CC_SWITCH_TEST_HOME="$(mktemp -d)"
+          export CC_SWITCH_WEB_TOKEN="$(openssl rand -hex 32)"
+          export CC_SWITCH_WEB_BIND=127.0.0.1:18080
+          export CC_SWITCH_WEB_ROOT="$GITHUB_WORKSPACE/web/dist"
+          log="$RUNNER_TEMP/web-smoke.log"
+          ./web-server/target/debug/cc-switch-web > "$log" 2>&1 &
+          server_pid=$!
+          trap 'kill -TERM "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true' EXIT
+          ready=false
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --header "Authorization: Bearer $CC_SWITCH_WEB_TOKEN" \
+              http://127.0.0.1:18080/api/session > "$RUNNER_TEMP/web-session.json"; then
+              ready=true
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat "$log"
+              exit 1
+            fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then
+            cat "$log"
+            echo "Web service did not become ready within 60 seconds"
+            exit 1
+          fi
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            http://127.0.0.1:18080/api/session)" = 401
+          curl --fail --silent http://127.0.0.1:18080/ > /dev/null
+          test -f "$CC_SWITCH_TEST_HOME/.cc-switch-web/cc-switch-web.db"
+          test ! -e "$CC_SWITCH_TEST_HOME/.cc-switch/cc-switch.db"
+          kill -TERM "$server_pid"
+          wait "$server_pid"
+          trap - EXIT
