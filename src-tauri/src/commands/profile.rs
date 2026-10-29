@@ -1,10 +1,15 @@
 //! 项目 Profile 管理命令
 
 use serde::Serialize;
+#[cfg(feature = "desktop")]
 use tauri::{Emitter, State};
 
 use crate::database::Profile;
+#[cfg(not(feature = "desktop"))]
+use crate::services::profile::ProfilePayload;
+#[cfg(feature = "desktop")]
 use crate::services::profile::{ProfilePayload, ProfileScope, ProfileService};
+#[cfg(feature = "desktop")]
 use crate::store::AppState;
 
 #[derive(Debug, Serialize)]
@@ -55,6 +60,7 @@ pub struct ProfilesResponse {
     pub current_ids: CurrentProfileIds,
 }
 
+#[cfg(feature = "desktop")]
 /// Profile 应用完成后的统一收尾：发事件 + 重建托盘菜单
 ///
 /// 只对项目所属分组内的应用发 provider-switched。UI 与托盘两个入口必须
@@ -97,7 +103,8 @@ pub fn emit_profile_apply_events(
     crate::tray::refresh_tray_menu(app);
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn list_profiles(state: State<'_, AppState>) -> Result<ProfilesResponse, String> {
     let profiles = ProfileService::list(&state).map_err(|e| e.to_string())?;
     let current_ids = CurrentProfileIds {
@@ -120,7 +127,8 @@ pub fn list_profiles(state: State<'_, AppState>) -> Result<ProfilesResponse, Str
     })
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn create_profile(
     state: State<'_, AppState>,
     name: String,
@@ -132,7 +140,8 @@ pub fn create_profile(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn update_profile(
     state: State<'_, AppState>,
     id: String,
@@ -149,12 +158,14 @@ pub fn update_profile(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn delete_profile(state: State<'_, AppState>, id: String) -> Result<(), String> {
     ProfileService::delete(&state, &id).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn clear_current_profile(state: State<'_, AppState>, scope: String) -> Result<(), String> {
     let scope = ProfileScope::parse(&scope).map_err(|e| e.to_string())?;
     state
@@ -163,11 +174,12 @@ pub fn clear_current_profile(state: State<'_, AppState>, scope: String) -> Resul
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 应用项目快照（只作用于发起页所属分组内的应用）。
 ///
 /// 注意：必须保持同步命令（跑在 Tauri 线程池）——`ProviderService::switch`
 /// 内部使用 block_on 获取切换锁，放进 async 命令会在运行时线程上 panic。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn apply_profile(
     app: tauri::AppHandle,
     state: State<'_, AppState>,

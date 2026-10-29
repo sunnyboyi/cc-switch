@@ -2,10 +2,12 @@
 //!
 //! 管理代理模式下的故障转移队列（基于 providers 表的 in_failover_queue 字段）
 
+#[cfg(feature = "desktop")]
 use crate::database::FailoverQueueItem;
 use crate::provider::Provider;
 use crate::store::AppState;
 use std::str::FromStr;
+#[cfg(feature = "desktop")]
 use tauri::Emitter;
 
 pub(crate) fn require_failover_app(app_type: &str) -> Result<(), String> {
@@ -69,8 +71,9 @@ mod tests {
     }
 }
 
+#[cfg(feature = "desktop")]
 /// 获取故障转移队列
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_failover_queue(
     state: tauri::State<'_, AppState>,
     app_type: String,
@@ -97,8 +100,9 @@ pub async fn get_failover_queue(
         .collect())
 }
 
+#[cfg(feature = "desktop")]
 /// 获取可添加到故障转移队列的供应商（不在队列中的）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_available_providers_for_failover(
     state: tauri::State<'_, AppState>,
     app_type: String,
@@ -116,8 +120,9 @@ pub async fn get_available_providers_for_failover(
         .collect())
 }
 
+#[cfg(feature = "desktop")]
 /// 添加供应商到故障转移队列。托盘的故障转移子菜单只列队列成员：队列一变就重建。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn add_to_failover_queue(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
@@ -134,8 +139,9 @@ pub async fn add_to_failover_queue(
     Ok(())
 }
 
+#[cfg(feature = "desktop")]
 /// 从故障转移队列移除供应商
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn remove_from_failover_queue(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
@@ -151,8 +157,9 @@ pub async fn remove_from_failover_queue(
     Ok(())
 }
 
+#[cfg(feature = "desktop")]
 /// 获取指定应用的自动故障转移开关状态（从 proxy_config 表读取）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_auto_failover_enabled(
     state: tauri::State<'_, AppState>,
     app_type: String,
@@ -166,10 +173,11 @@ pub async fn get_auto_failover_enabled(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 设置指定应用的自动故障转移开关状态（写入 proxy_config 表）
 ///
 /// 注意：关闭故障转移时不会清除队列，队列内容会保留供下次开启时使用
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn set_auto_failover_enabled(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
@@ -180,11 +188,13 @@ pub async fn set_auto_failover_enabled(
 }
 
 pub(crate) async fn set_auto_failover_for_state(
-    app: Option<&tauri::AppHandle>,
+    app: Option<&crate::desktop_handle::DesktopHandle>,
     state: &AppState,
     app_type: String,
     enabled: bool,
 ) -> Result<(), String> {
+    #[cfg(not(feature = "desktop"))]
+    let _ = app;
     require_failover_app(&app_type)?;
     let app_enum = crate::app_config::AppType::from_str(&app_type)
         .map_err(|_| format!("无效的应用类型: {app_type}"))?;
@@ -297,6 +307,7 @@ pub(crate) async fn set_auto_failover_for_state(
         .await
         .map_err(|e| e.to_string())?;
 
+    #[cfg(feature = "desktop")]
     if enabled {
         // 发射 provider-switched 事件（让前端刷新当前供应商）
         let event_data = serde_json::json!({
@@ -310,6 +321,7 @@ pub(crate) async fn set_auto_failover_for_state(
     }
 
     // 刷新托盘，确保状态同步（Linux 重建原生菜单，其它平台通知托盘面板，不挂原生菜单）
+    #[cfg(feature = "desktop")]
     if let Some(app) = app {
         crate::tray::refresh_tray_menu(app);
     }

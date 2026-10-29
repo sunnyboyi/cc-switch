@@ -126,7 +126,6 @@ async function main() {
     console.log("准备依赖与 Web 页面…");
     await run(command, [...prefix, "install", "--frozen-lockfile"]);
     await run(command, [...prefix, "build:web"]);
-    mkdirSync(path.join(root, "dist"), { recursive: true });
     console.log("准备服务端（首次编译可能需要几分钟）…");
     await run("cargo", [
       "build",

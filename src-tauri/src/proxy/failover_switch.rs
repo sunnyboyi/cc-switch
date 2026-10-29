@@ -8,6 +8,7 @@
 use crate::error::AppError;
 use std::collections::HashSet;
 use std::sync::Arc;
+#[cfg(feature = "desktop")]
 use tauri::{Emitter, Manager};
 use tokio::sync::RwLock;
 
@@ -37,7 +38,7 @@ impl FailoverSwitchManager {
     /// - `Err(e)` - 切换过程中发生错误
     pub async fn try_switch(
         &self,
-        app_handle: Option<&tauri::AppHandle>,
+        app_handle: Option<&crate::desktop_handle::DesktopHandle>,
         app_type: &str,
         provider_id: &str,
         provider_name: &str,
@@ -70,7 +71,7 @@ impl FailoverSwitchManager {
 
     async fn do_switch(
         &self,
-        app_handle: Option<&tauri::AppHandle>,
+        app_handle: Option<&crate::desktop_handle::DesktopHandle>,
         app_type: &str,
         provider_id: &str,
         provider_name: &str,
@@ -86,8 +87,13 @@ impl FailoverSwitchManager {
 
         log::info!("[FO-001] 切换: {app_type} → {provider_name}");
 
+        #[cfg_attr(not(feature = "desktop"), allow(unused_mut))]
         let mut switched = false;
 
+        #[cfg(not(feature = "desktop"))]
+        let _ = (app_handle, provider_id);
+
+        #[cfg(feature = "desktop")]
         if let Some(app) = app_handle {
             if let Some(app_state) = app.try_state::<crate::store::AppState>() {
                 // 只换代理的路由，不写客户端文件。

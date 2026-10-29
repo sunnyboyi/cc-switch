@@ -10,23 +10,32 @@
 //!   合并成一次事件可避免前端连续 invalidate。
 //! - 不阻塞写入：通知失败仅记录 warn 日志，不向上传播错误。
 
+#[cfg(feature = "desktop")]
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(feature = "desktop")]
 use std::sync::OnceLock;
+#[cfg(feature = "desktop")]
 use std::time::Duration;
 
+#[cfg(feature = "desktop")]
 use tauri::{AppHandle, Emitter};
 
+#[cfg(feature = "desktop")]
 /// 前端监听的事件名
 pub const EVENT_USAGE_LOG_RECORDED: &str = "usage-log-recorded";
 
+#[cfg(feature = "desktop")]
 /// 防抖窗口：合并 200ms 内的多次通知。
 const DEBOUNCE_WINDOW: Duration = Duration::from_millis(200);
 
+#[cfg(feature = "desktop")]
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
+#[cfg(feature = "desktop")]
 /// 防抖标记：true 表示已有调度任务在等待 emit，后续通知合并到该任务。
 static EMIT_SCHEDULED: AtomicBool = AtomicBool::new(false);
 
+#[cfg(feature = "desktop")]
 /// 在应用 setup 阶段调用一次，注入 AppHandle。
 ///
 /// 重复调用是无害的（OnceLock 仅首次写入生效），但应用启动期只该被
@@ -47,6 +56,12 @@ pub fn notify_log_recorded() {
     #[cfg(test)]
     TEST_NOTIFY_COUNT.with(|count| count.set(count.get().saturating_add(1)));
 
+    #[cfg(feature = "desktop")]
+    notify_desktop();
+}
+
+#[cfg(feature = "desktop")]
+fn notify_desktop() {
     // AppHandle 未注入（典型出现在单元测试或 setup 之前）：直接放弃。
     let Some(handle) = APP_HANDLE.get() else {
         return;

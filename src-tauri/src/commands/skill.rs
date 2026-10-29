@@ -4,17 +4,27 @@
 //! - 支持三应用开关（Claude/Codex/Gemini）
 //! - SSOT 存储在 ~/.cc-switch/skills/
 
+#[cfg(not(feature = "desktop"))]
+use crate::app_config::AppType;
+#[cfg(feature = "desktop")]
 use crate::app_config::{AppType, InstalledSkill, UnmanagedSkill};
+#[cfg(feature = "desktop")]
 use crate::error::format_skill_error;
+#[cfg(feature = "desktop")]
 use crate::services::skill::{
     DiscoverableSkill, ImportSkillSelection, MigrationResult, Skill, SkillAppSyncOutcome,
     SkillBackupEntry, SkillDiscoveryResult, SkillRepo, SkillService, SkillStorageLocation,
     SkillUninstallResult, SkillUpdateCheckResult, SkillsShSearchResult, ZipInstallResult,
 };
+#[cfg(not(feature = "desktop"))]
+use crate::services::skill::{SkillBackupEntry, SkillService, SkillsShSearchResult};
+#[cfg(feature = "desktop")]
 use crate::store::AppState;
 use std::str::FromStr;
 use std::sync::Arc;
+#[cfg(feature = "desktop")]
 use tauri::{AppHandle, State};
+#[cfg(feature = "desktop")]
 use tauri_plugin_opener::OpenerExt;
 
 /// SkillService 状态包装
@@ -27,29 +37,31 @@ fn parse_app_type(app: &str) -> Result<AppType, String> {
 
 // ========== 统一管理命令 ==========
 
+#[cfg(feature = "desktop")]
 /// 获取所有已安装的 Skills
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_installed_skills(app_state: State<'_, AppState>) -> Result<Vec<InstalledSkill>, String> {
     SkillService::get_all_installed(&app_state.db).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_skill_backups() -> Result<Vec<SkillBackupEntry>, String> {
     SkillService::list_backups().map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn delete_skill_backup(backup_id: String) -> Result<bool, String> {
     SkillService::delete_backup(&backup_id).map_err(|e| e.to_string())?;
     Ok(true)
 }
 
+#[cfg(feature = "desktop")]
 /// 安装 Skill（新版统一安装）
 ///
 /// 参数：
 /// - skill: 从发现列表获取的技能信息
 /// - current_app: 当前选中的应用，安装后默认启用该应用
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn install_skill_unified(
     skill: DiscoverableSkill,
     current_app: String,
@@ -65,8 +77,9 @@ pub async fn install_skill_unified(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 卸载 Skill（新版统一卸载）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn uninstall_skill_unified(
     id: String,
     app_state: State<'_, AppState>,
@@ -74,7 +87,8 @@ pub fn uninstall_skill_unified(
     SkillService::uninstall(&app_state.db, &id).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn restore_skill_backup(
     backup_id: String,
     current_app: String,
@@ -85,8 +99,9 @@ pub fn restore_skill_backup(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 切换 Skill 的应用启用状态
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn toggle_skill_app(
     id: String,
     app: String,
@@ -98,16 +113,18 @@ pub fn toggle_skill_app(
     Ok(true)
 }
 
+#[cfg(feature = "desktop")]
 /// 扫描未管理的 Skills
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn scan_unmanaged_skills(
     app_state: State<'_, AppState>,
 ) -> Result<Vec<UnmanagedSkill>, String> {
     SkillService::scan_unmanaged(&app_state.db).map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 从应用目录导入 Skills
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn import_skills_from_apps(
     imports: Vec<ImportSkillSelection>,
     app_state: State<'_, AppState>,
@@ -117,10 +134,11 @@ pub fn import_skills_from_apps(
 
 // ========== 发现功能命令 ==========
 
+#[cfg(feature = "desktop")]
 /// 发现可安装的 Skills（从仓库获取），并逐仓库报告没读到的仓库
 ///
 /// `force_refresh` 为 true（手动刷新）时绕过按仓库的发现缓存。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn discover_available_skills(
     force_refresh: Option<bool>,
     service: State<'_, SkillServiceState>,
@@ -134,9 +152,10 @@ pub async fn discover_available_skills(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 只发现一个已保存的仓库（添加、重新启用仓库后用，不重拉其它仓库）。
 /// 仓库不存在或已停用时返回空结果。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn discover_repo_skills(
     owner: String,
     name: String,
@@ -153,8 +172,9 @@ pub async fn discover_repo_skills(
     Ok(service.0.discover_repo(&repo).await)
 }
 
+#[cfg(feature = "desktop")]
 /// 检查 Skills 更新，并逐仓库报告没读到的仓库
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn check_skill_updates(
     service: State<'_, SkillServiceState>,
     app_state: State<'_, AppState>,
@@ -166,20 +186,22 @@ pub async fn check_skill_updates(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 立即重新同步：按数据库里的开关和当前同步方式，把 Skill 重新投影到各应用目录，
 /// 逐应用返回结果。只动 Skills 目录，不碰各应用的配置文件。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn resync_skills_to_apps(
     app_state: State<'_, AppState>,
 ) -> Result<Vec<SkillAppSyncOutcome>, String> {
     let db = app_state.db.clone();
-    tauri::async_runtime::spawn_blocking(move || SkillService::resync_all_apps(&db))
+    crate::runtime::spawn_blocking(move || SkillService::resync_all_apps(&db))
         .await
         .map_err(|e| format!("重新同步 Skill 失败: {e}"))
 }
 
+#[cfg(feature = "desktop")]
 /// 更新单个 Skill
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn update_skill(
     id: String,
     service: State<'_, SkillServiceState>,
@@ -192,8 +214,9 @@ pub async fn update_skill(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 迁移 Skill 存储位置
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn migrate_skill_storage(
     target: SkillStorageLocation,
     app_state: State<'_, AppState>,
@@ -207,13 +230,14 @@ fn cc_switch_skills_dir() -> std::path::PathBuf {
 }
 
 /// 「存储与同步」里显示的 CC Switch 目录路径
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_cc_switch_skills_dir() -> Result<String, String> {
     Ok(cc_switch_skills_dir().to_string_lossy().to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 在系统文件管理器里打开 CC Switch 目录下的 Skills 目录（不存在就先建）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn open_cc_switch_skills_dir(handle: AppHandle) -> Result<bool, String> {
     let dir = cc_switch_skills_dir();
     if !dir.exists() {
@@ -226,8 +250,9 @@ pub async fn open_cc_switch_skills_dir(handle: AppHandle) -> Result<bool, String
     Ok(true)
 }
 
+#[cfg(feature = "desktop")]
 /// 在系统文件管理器里打开某个已安装 Skill 的主副本目录
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn open_skill_dir(handle: AppHandle, directory: String) -> Result<bool, String> {
     let dir = SkillService::get_installed_skill_dir(&directory).map_err(|e| e.to_string())?;
     if !dir.is_dir() {
@@ -241,7 +266,7 @@ pub async fn open_skill_dir(handle: AppHandle, directory: String) -> Result<bool
 }
 
 /// 搜索 skills.sh 公共目录
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn search_skills_sh(
     query: String,
     limit: usize,
@@ -254,8 +279,9 @@ pub async fn search_skills_sh(
 
 // ========== 兼容旧 API 的命令 ==========
 
+#[cfg(feature = "desktop")]
 /// 获取技能列表（兼容旧 API）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_skills(
     service: State<'_, SkillServiceState>,
     app_state: State<'_, AppState>,
@@ -268,8 +294,9 @@ pub async fn get_skills(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 获取指定应用的技能列表（兼容旧 API）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_skills_for_app(
     app: String,
     service: State<'_, SkillServiceState>,
@@ -280,8 +307,9 @@ pub async fn get_skills_for_app(
     get_skills(service, app_state).await
 }
 
+#[cfg(feature = "desktop")]
 /// 安装技能（兼容旧 API）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn install_skill(
     directory: String,
     service: State<'_, SkillServiceState>,
@@ -290,8 +318,9 @@ pub async fn install_skill(
     install_skill_for_app("claude".to_string(), directory, service, app_state).await
 }
 
+#[cfg(feature = "desktop")]
 /// 安装指定应用的技能（兼容旧 API）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn install_skill_for_app(
     app: String,
     directory: String,
@@ -335,8 +364,9 @@ pub async fn install_skill_for_app(
     Ok(true)
 }
 
+#[cfg(feature = "desktop")]
 /// 卸载技能（兼容旧 API）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn uninstall_skill(
     directory: String,
     app_state: State<'_, AppState>,
@@ -344,8 +374,9 @@ pub fn uninstall_skill(
     uninstall_skill_for_app("claude".to_string(), directory, app_state)
 }
 
+#[cfg(feature = "desktop")]
 /// 卸载指定应用的技能（兼容旧 API）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn uninstall_skill_for_app(
     app: String,
     directory: String,
@@ -366,14 +397,16 @@ pub fn uninstall_skill_for_app(
 
 // ========== 仓库管理命令 ==========
 
+#[cfg(feature = "desktop")]
 /// 获取技能仓库列表
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_skill_repos(app_state: State<'_, AppState>) -> Result<Vec<SkillRepo>, String> {
     app_state.db.get_skill_repos().map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 添加技能仓库
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn add_skill_repo(repo: SkillRepo, app_state: State<'_, AppState>) -> Result<bool, String> {
     // 整个结构体由前端反序列化而来，owner/name/branch 会被拼进归档下载 URL。
     // 主防线在 download_repo，这里让非法值当场报错而不是沉淀进表。
@@ -386,8 +419,9 @@ pub fn add_skill_repo(repo: SkillRepo, app_state: State<'_, AppState>) -> Result
     Ok(true)
 }
 
+#[cfg(feature = "desktop")]
 /// 删除技能仓库
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn remove_skill_repo(
     owner: String,
     name: String,
@@ -400,8 +434,9 @@ pub fn remove_skill_repo(
     Ok(true)
 }
 
+#[cfg(feature = "desktop")]
 /// 从 ZIP 文件安装 Skills；目录名已被占用的如实列在 `skipped` 里（#3749）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn install_skills_from_zip(
     file_path: String,
     current_app: String,

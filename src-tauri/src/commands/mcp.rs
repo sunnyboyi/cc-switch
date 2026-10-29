@@ -1,42 +1,47 @@
 #![allow(non_snake_case)]
 
+#[cfg(feature = "desktop")]
 use indexmap::IndexMap;
 use std::collections::HashMap;
 
 use serde::Serialize;
+#[cfg(feature = "desktop")]
 use tauri::State;
 
+#[cfg(feature = "desktop")]
 use crate::app_config::AppType;
 use crate::claude_mcp;
+#[cfg(feature = "desktop")]
 use crate::services::McpService;
+#[cfg(feature = "desktop")]
 use crate::store::AppState;
 
 /// 获取 Claude MCP 状态
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_claude_mcp_status() -> Result<claude_mcp::McpStatus, String> {
     claude_mcp::get_mcp_status().map_err(|e| e.to_string())
 }
 
 /// 读取 mcp.json 文本内容
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn read_claude_mcp_config() -> Result<Option<String>, String> {
     claude_mcp::read_mcp_json().map_err(|e| e.to_string())
 }
 
 /// 新增或更新一个 MCP 服务器条目
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn upsert_claude_mcp_server(id: String, spec: serde_json::Value) -> Result<bool, String> {
     claude_mcp::upsert_mcp_server(&id, spec).map_err(|e| e.to_string())
 }
 
 /// 删除一个 MCP 服务器条目
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn delete_claude_mcp_server(id: String) -> Result<bool, String> {
     claude_mcp::delete_mcp_server(&id).map_err(|e| e.to_string())
 }
 
 /// 校验命令是否在 PATH 中可用（不执行）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn validate_mcp_command(cmd: String) -> Result<bool, String> {
     claude_mcp::validate_command_in_path(&cmd).map_err(|e| e.to_string())
 }
@@ -47,10 +52,12 @@ pub struct McpConfigResponse {
     pub servers: HashMap<String, serde_json::Value>,
 }
 
+#[cfg(feature = "desktop")]
 /// 获取 MCP 配置（来自 ~/.cc-switch/config.json）
 use std::str::FromStr;
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 #[allow(deprecated)] // 兼容层命令，内部调用已废弃的 Service 方法
 pub async fn get_mcp_config(
     state: State<'_, AppState>,
@@ -67,9 +74,10 @@ pub async fn get_mcp_config(
     })
 }
 
+#[cfg(feature = "desktop")]
 /// 在 config.json 中新增或更新一个 MCP 服务器定义
 /// [已废弃] 该命令仍然使用旧的分应用API，会转换为统一结构
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn upsert_mcp_server_in_config(
     state: State<'_, AppState>,
     app: String,
@@ -130,8 +138,9 @@ pub async fn upsert_mcp_server_in_config(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 在 config.json 中删除一个 MCP 服务器定义
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn delete_mcp_server_in_config(
     state: State<'_, AppState>,
     _app: String, // 参数保留用于向后兼容，但在统一结构中不再需要
@@ -140,8 +149,9 @@ pub async fn delete_mcp_server_in_config(
     McpService::delete_server(&state, &id).map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 设置启用状态并同步到客户端配置（兼容层命令，同 `toggle_mcp_app`）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn set_mcp_enabled(
     state: State<'_, AppState>,
     app: String,
@@ -159,18 +169,21 @@ pub async fn set_mcp_enabled(
 // v3.7.0 新增：统一 MCP 管理命令
 // ============================================================================
 
+#[cfg(feature = "desktop")]
 use crate::app_config::McpServer;
 
+#[cfg(feature = "desktop")]
 /// 获取所有 MCP 服务器（统一结构）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_mcp_servers(
     state: State<'_, AppState>,
 ) -> Result<IndexMap<String, McpServer>, String> {
     McpService::get_all_servers(&state).map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 添加或更新 MCP 服务器
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn upsert_mcp_server(
     state: State<'_, AppState>,
     server: McpServer,
@@ -178,14 +191,16 @@ pub async fn upsert_mcp_server(
     McpService::upsert_server(&state, server).map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 删除 MCP 服务器
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn delete_mcp_server(state: State<'_, AppState>, id: String) -> Result<bool, String> {
     McpService::delete_server(&state, &id).map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 切换 MCP 服务器在指定应用的启用状态
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn toggle_mcp_app(
     state: State<'_, AppState>,
     server_id: String,
@@ -198,17 +213,19 @@ pub async fn toggle_mcp_app(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 从所有应用导入 MCP 服务器（复用已有的导入逻辑）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn import_mcp_from_apps(state: State<'_, AppState>) -> Result<usize, String> {
     McpService::import_from_all_apps(&state).map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 按数据库里的开关把 MCP 重新写进各应用的 live 配置，逐应用返回结果。
 ///
 /// `apps` 缺省或为空时同步全部受管应用。每个应用先拿它的切换锁再写，
 /// 和切换供应商互斥；单个应用失败（如配置文件解析失败）不影响其余应用。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn resync_mcp_to_apps(
     state: State<'_, AppState>,
     apps: Option<Vec<String>>,

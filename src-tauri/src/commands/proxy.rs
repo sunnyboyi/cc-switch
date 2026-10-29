@@ -3,7 +3,9 @@
 //! 提供前端调用的 API 接口
 
 use crate::error::AppError;
+#[cfg(feature = "desktop")]
 use crate::proxy::types::*;
+#[cfg(feature = "desktop")]
 use crate::proxy::{CircuitBreakerConfig, CircuitBreakerStats};
 use crate::store::AppState;
 use std::str::FromStr;
@@ -28,16 +30,18 @@ fn require_mode_app(app_type: &str) -> Result<crate::app_config::AppType, String
     Ok(app)
 }
 
+#[cfg(feature = "desktop")]
 /// 启动代理服务器（仅启动服务，不接管 Live 配置）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn start_proxy_server(
     state: tauri::State<'_, AppState>,
 ) -> Result<ProxyServerInfo, String> {
     state.proxy_service.start().await
 }
 
+#[cfg(feature = "desktop")]
 /// 停止代理服务器（仅停止服务，不恢复/清理 Live 接管状态）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stop_proxy_server(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let takeover = state.proxy_service.get_takeover_status().await?;
     if takeover.claude
@@ -56,24 +60,27 @@ pub async fn stop_proxy_server(state: tauri::State<'_, AppState>) -> Result<(), 
     state.proxy_service.stop().await
 }
 
+#[cfg(feature = "desktop")]
 /// 关闭本地路由：所有应用退回直连，再停止代理服务器
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stop_proxy_with_restore(state: tauri::State<'_, AppState>) -> Result<(), String> {
     crate::mode::controller::exit_all(state.inner()).await
 }
 
+#[cfg(feature = "desktop")]
 /// 获取各应用接管状态
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_proxy_takeover_status(
     state: tauri::State<'_, AppState>,
 ) -> Result<ProxyTakeoverStatus, String> {
     state.proxy_service.get_takeover_status().await
 }
 
+#[cfg(feature = "desktop")]
 /// 为指定应用进入 / 退出代理模式。`stack` 为真时进入的是 Stack 模式（和路由模式二选一），
 /// `route` 是确认框里选的路由目标（Stack 模式下是默认那家，不传沿用上次的路由）；退出时
 /// 两者都不看。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn set_proxy_takeover_for_app(
     state: tauri::State<'_, AppState>,
     app_type: String,
@@ -95,8 +102,9 @@ pub async fn set_proxy_takeover_for_app(
     }
 }
 
+#[cfg(feature = "desktop")]
 /// 应用页模式行用：生效的模式、路由目标（直连时是上次路由的那家）、直连那家。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_app_mode(
     state: tauri::State<'_, AppState>,
     app_type: String,
@@ -105,9 +113,10 @@ pub fn get_app_mode(
     crate::mode::controller::app_mode_view(state.inner(), &app)
 }
 
+#[cfg(feature = "desktop")]
 /// 指定路由目标（聚合模式下是默认那家）。直连模式下只记下来，下次进入路由 / 聚合模式时用它；
 /// 已经在路由 / 聚合模式时当场生效。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn set_proxy_route(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
@@ -122,14 +131,15 @@ pub async fn set_proxy_route(
 }
 
 /// 启动时没能接上代理、已退回直连的应用（取一次就清空）。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn take_startup_attach_failures() -> Vec<crate::mode::controller::StartupAttachFailure> {
     crate::mode::controller::take_startup_attach_failures()
 }
 
+#[cfg(feature = "desktop")]
 /// 设置里在路由和 Stack 之间换的时候：处于另一种模式（`stack` 为真是 Stack 模式）的
 /// Claude Code、Codex 先退回直连。返回退回直连的应用。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn exit_proxy_apps_in_mode(
     state: tauri::State<'_, AppState>,
     stack: bool,
@@ -137,8 +147,9 @@ pub async fn exit_proxy_apps_in_mode(
     crate::mode::controller::exit_apps_in_mode(state.inner(), stack).await
 }
 
+#[cfg(feature = "desktop")]
 /// 直连指针：代理模式下退出代理时写回的供应商
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_direct_provider(
     state: tauri::State<'_, AppState>,
     app_type: String,
@@ -147,8 +158,9 @@ pub fn get_direct_provider(
     crate::mode::controller::direct_provider_id(state.inner(), &app).map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// Stack 模型：名单里的每一家和它发布的模型 id，以及还在用旧模型列表的 Codex 客户端
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_proxy_stack(
     state: tauri::State<'_, AppState>,
     app_type: String,
@@ -159,7 +171,7 @@ pub async fn get_proxy_stack(
 
 /// 重启 Codex 的托管守护进程（`codex` TUI 连的那个），让它重读模型目录。会中断守护进程里
 /// 正在运行的任务，只在用户确认之后调。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn restart_codex_app_server_daemon(
 ) -> Result<crate::services::provider::codex_client_catalog::RestartOutcome, String> {
     crate::services::provider::codex_direct::off_runtime(
@@ -171,7 +183,7 @@ pub async fn restart_codex_app_server_daemon(
 
 /// 用户关掉「Codex 可能还在用旧的」提示（看不到进程时出的那种）：记下现在的模型目录和文件
 /// 登录，同一份不再提示。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn acknowledge_codex_stale_clients() -> Result<(), String> {
     crate::services::provider::codex_direct::off_runtime(|| {
         crate::services::provider::codex_client_catalog::acknowledge(
@@ -182,9 +194,10 @@ pub async fn acknowledge_codex_stale_clients() -> Result<(), String> {
     .map_err(|error| error.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// Stack 模型：把一家加入或移出名单（`enabled` 是目标值）。成功时返回客户端看不到或看不全
 /// Stack 模型的提示；失败时 `partial` 为真表示已部分写入，下次操作或重启 CC Switch 时补完。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn set_proxy_stack_member(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
@@ -202,29 +215,33 @@ pub async fn set_proxy_stack_member(
     result
 }
 
+#[cfg(feature = "desktop")]
 /// Codex 聚合的模型被别的模型目录挡住时，改用 CC Switch 生成的目录（去掉指向别的文件的
 /// `model_catalog_json`）。返回之后还剩的提示。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn adopt_codex_stack_catalog(
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<&'static str>, String> {
     crate::mode::controller::adopt_codex_stack_catalog(state.inner()).await
 }
 
+#[cfg(feature = "desktop")]
 /// 获取代理服务器状态
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_proxy_status(state: tauri::State<'_, AppState>) -> Result<ProxyStatus, String> {
     state.proxy_service.get_status().await
 }
 
+#[cfg(feature = "desktop")]
 /// 获取代理配置
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_proxy_config(state: tauri::State<'_, AppState>) -> Result<ProxyConfig, String> {
     state.proxy_service.get_config().await
 }
 
+#[cfg(feature = "desktop")]
 /// 更新代理配置
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn update_proxy_config(
     state: tauri::State<'_, AppState>,
     config: ProxyConfig,
@@ -238,10 +255,11 @@ pub async fn update_proxy_config(
 
 // ==================== Global & Per-App Config ====================
 
+#[cfg(feature = "desktop")]
 /// 获取全局代理配置
 ///
 /// 返回统一的全局配置字段（代理开关、监听地址、端口、日志开关）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_global_proxy_config(
     state: tauri::State<'_, AppState>,
 ) -> Result<GlobalProxyConfig, String> {
@@ -251,13 +269,14 @@ pub async fn get_global_proxy_config(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 更新全局代理配置
 ///
 /// 更新统一的全局配置字段，四行镜像写，各应用自己的重试和超时不碰。设置页的按钮写着
 /// 「保存并重启服务」：服务在跑时地址或端口变了就重启、再按新地址重写接上路由的客户端
 /// （含 Claude Desktop 的模型映射卡），日志开关实时生效；只写库的话服务还在旧端口上听、
 /// 客户端也还指着旧端口。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn update_global_proxy_config(
     state: tauri::State<'_, AppState>,
     config: GlobalProxyConfig,
@@ -270,16 +289,17 @@ pub async fn update_global_proxy_config(
 }
 
 /// 获取客户端地址：写进客户端配置的代理主机，空表示按监听地址推。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_proxy_client_host() -> Result<String, String> {
     Ok(crate::settings::get_proxy_client_host().unwrap_or_default())
 }
 
+#[cfg(feature = "desktop")]
 /// 保存客户端地址，再按新地址重写接上路由的客户端，不用重启服务。存在本机的
 /// settings.json 里：这个地址只对这台机器有意义，不能随数据库同步到别的设备。
 /// 每次保存都重写一遍：上次重写失败、改好客户端文件后原样再保存就是重试；
 /// 客户端已经是这个地址时重写不碰文件。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn set_proxy_client_host(
     state: tauri::State<'_, AppState>,
     host: String,
@@ -297,10 +317,11 @@ async fn resync_proxy_clients(state: &AppState) -> Result<(), String> {
     crate::mode::controller::resync_routes(state).await
 }
 
+#[cfg(feature = "desktop")]
 /// 获取指定应用的代理配置
 ///
 /// 返回应用级配置（enabled、auto_failover、超时、熔断器等）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_proxy_config_for_app(
     state: tauri::State<'_, AppState>,
     app_type: String,
@@ -312,10 +333,11 @@ pub async fn get_proxy_config_for_app(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 更新指定应用的代理配置
 ///
 /// 更新应用级配置（enabled、auto_failover、超时、熔断器等）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn update_proxy_config_for_app(
     state: tauri::State<'_, AppState>,
     config: AppProxyConfig,
@@ -354,8 +376,9 @@ pub async fn get_pricing_model_source_test_hook(
     get_pricing_model_source_internal(state, app_type).await
 }
 
+#[cfg(feature = "desktop")]
 /// 获取计费模式来源
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_pricing_model_source(
     state: tauri::State<'_, AppState>,
     app_type: String,
@@ -383,8 +406,9 @@ pub async fn set_pricing_model_source_test_hook(
     set_pricing_model_source_internal(state, app_type, value).await
 }
 
+#[cfg(feature = "desktop")]
 /// 设置计费模式来源
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn set_pricing_model_source(
     state: tauri::State<'_, AppState>,
     app_type: String,
@@ -395,20 +419,23 @@ pub async fn set_pricing_model_source(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 检查代理服务器是否正在运行
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn is_proxy_running(state: tauri::State<'_, AppState>) -> Result<bool, String> {
     Ok(state.proxy_service.is_running().await)
 }
 
+#[cfg(feature = "desktop")]
 /// 检查是否处于 Live 接管模式
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn is_live_takeover_active(state: tauri::State<'_, AppState>) -> Result<bool, String> {
     state.proxy_service.is_takeover_active().await
 }
 
+#[cfg(feature = "desktop")]
 /// 代理模式下切换供应商（热切换）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn switch_proxy_provider(
     state: tauri::State<'_, AppState>,
     app_type: String,
@@ -420,8 +447,9 @@ pub async fn switch_proxy_provider(
 
 // ==================== 故障转移相关命令 ====================
 
+#[cfg(feature = "desktop")]
 /// 获取供应商健康状态
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_provider_health(
     state: tauri::State<'_, AppState>,
     provider_id: String,
@@ -434,12 +462,13 @@ pub async fn get_provider_health(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 重置熔断器
 ///
 /// 重置后会检查是否应该切回队列中优先级更高的供应商：
 /// 1. 检查自动故障转移是否开启
 /// 2. 如果恢复的供应商在队列中优先级更高（queue_order 更小），则自动切换
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn reset_circuit_breaker(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
@@ -450,7 +479,7 @@ pub async fn reset_circuit_breaker(
 }
 
 pub(crate) async fn reset_circuit_breaker_for_state(
-    app_handle: Option<&tauri::AppHandle>,
+    app_handle: Option<&crate::desktop_handle::DesktopHandle>,
     state: &AppState,
     provider_id: String,
     app_type: String,
@@ -533,8 +562,9 @@ pub(crate) async fn reset_circuit_breaker_for_state(
     Ok(())
 }
 
+#[cfg(feature = "desktop")]
 /// 获取熔断器配置
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_circuit_breaker_config(
     state: tauri::State<'_, AppState>,
 ) -> Result<CircuitBreakerConfig, String> {
@@ -544,8 +574,9 @@ pub async fn get_circuit_breaker_config(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 更新熔断器配置
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn update_circuit_breaker_config(
     state: tauri::State<'_, AppState>,
     config: CircuitBreakerConfig,
@@ -566,8 +597,9 @@ pub async fn update_circuit_breaker_config(
     Ok(())
 }
 
+#[cfg(feature = "desktop")]
 /// 获取熔断器统计信息（仅当代理服务器运行时）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_circuit_breaker_stats(
     state: tauri::State<'_, AppState>,
     provider_id: String,

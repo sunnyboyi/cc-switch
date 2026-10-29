@@ -1,16 +1,20 @@
 #![allow(non_snake_case)]
 
+#[cfg(feature = "desktop")]
 use tauri::{AppHandle, State};
+#[cfg(feature = "desktop")]
 use tauri_plugin_dialog::DialogExt;
+#[cfg(feature = "desktop")]
 use tauri_plugin_opener::OpenerExt;
 
 use crate::app_config::AppType;
 use crate::codex_config;
 use crate::config::{self, get_claude_settings_path, ConfigStatus};
 use crate::settings;
+#[cfg(feature = "desktop")]
 use crate::store::AppState;
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_claude_config_status() -> Result<ConfigStatus, String> {
     Ok(config::get_claude_config_status())
 }
@@ -64,7 +68,8 @@ fn validate_common_config_snippet(app_type: &str, snippet: &str) -> Result<(), S
     Ok(())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_config_status(
     state: State<'_, AppState>,
     app: String,
@@ -192,12 +197,12 @@ pub async fn get_config_status(
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_claude_code_config_path() -> Result<String, String> {
     Ok(get_claude_settings_path().to_string_lossy().to_string())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_config_dir(app: String) -> Result<String, String> {
     let dir = match AppType::from_str(&app).map_err(|e| e.to_string())? {
         AppType::Claude => config::get_claude_config_dir(),
@@ -224,7 +229,8 @@ pub async fn get_config_dir(app: String) -> Result<String, String> {
     Ok(dir.to_string_lossy().to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn open_config_folder(handle: AppHandle, app: String) -> Result<bool, String> {
     let config_dir = match AppType::from_str(&app).map_err(|e| e.to_string())? {
         AppType::Claude => config::get_claude_config_dir(),
@@ -260,7 +266,8 @@ pub async fn open_config_folder(handle: AppHandle, app: String) -> Result<bool, 
     Ok(true)
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn pick_directory(
     app: AppHandle,
     #[allow(non_snake_case)] defaultPath: Option<String>,
@@ -269,7 +276,7 @@ pub async fn pick_directory(
         .map(|p| p.trim().to_string())
         .filter(|p| !p.is_empty());
 
-    let result = tauri::async_runtime::spawn_blocking(move || {
+    let result = crate::runtime::spawn_blocking(move || {
         let mut builder = app.dialog().file();
         if let Some(path) = initial {
             builder = builder.set_directory(path);
@@ -291,13 +298,14 @@ pub async fn pick_directory(
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_app_config_path() -> Result<String, String> {
     let config_path = config::get_app_config_path();
     Ok(config_path.to_string_lossy().to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn open_app_config_folder(handle: AppHandle) -> Result<bool, String> {
     let config_dir = config::get_app_config_dir();
 
@@ -313,8 +321,9 @@ pub async fn open_app_config_folder(handle: AppHandle) -> Result<bool, String> {
     Ok(true)
 }
 
+#[cfg(feature = "desktop")]
 /// 在文件管理器中定位应用诊断日志 cc-switch.log；文件还没生成时打开日志目录
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn reveal_app_log_file() -> Result<bool, String> {
     let log_dir = crate::panic_hook::get_log_dir();
     let log_file = log_dir.join("cc-switch.log");
@@ -331,7 +340,8 @@ pub async fn reveal_app_log_file() -> Result<bool, String> {
     Ok(true)
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_claude_common_config_snippet(
     state: tauri::State<'_, crate::store::AppState>,
 ) -> Result<Option<String>, String> {
@@ -341,7 +351,8 @@ pub async fn get_claude_common_config_snippet(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn set_claude_common_config_snippet(
     snippet: String,
     state: tauri::State<'_, crate::store::AppState>,
@@ -365,7 +376,8 @@ pub async fn set_claude_common_config_snippet(
     Ok(())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_common_config_snippet(
     app_type: String,
     state: tauri::State<'_, crate::store::AppState>,
@@ -376,7 +388,8 @@ pub async fn get_common_config_snippet(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn set_common_config_snippet(
     app_type: String,
     snippet: String,
@@ -449,7 +462,8 @@ mod tests {
     }
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn extract_common_config_snippet(
     appType: String,
     settingsConfig: Option<String>,

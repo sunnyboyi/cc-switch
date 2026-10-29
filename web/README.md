@@ -45,9 +45,9 @@
 
 服务不调用 `cc_switch_lib::run()`，不创建窗口、托盘或 WebView，也不要求 DISPLAY、Wayland 或 Xvfb。
 
-第一版直接链接现有 Rust 库，该库仍包含 Tauri/Wry 及 GTK/WebKit 依赖。**无需桌面会话不代表无需这些共享库。** 在 Linux 上构建及部署仍需原工程对应的平台依赖。这一版尚未将业务库抽成完全不依赖图形组件的 crate，避免为 Web 入口大幅改动原工程。
+Web 使用 `default-features = false, features = ["web"]` 复用 Rust 业务库，构建不包含 Tauri/Wry、GTK、WebKit 或桌面插件。桌面端默认启用 `desktop` feature，保留原入口、命令签名与运行时；Web 的共享业务使用独立 Tokio 运行时。托盘、窗口、系统剪贴板和桌面自动启动只在桌面构建中启用。CLI 探测、安装、升级、卸载和配置读写仍直接针对运行服务的宿主机用户。
 
-当前本地开发验证环境是 Windows。独立的 `web-ci.yml` 在相关改动推送到 `main`、提交 PR 或手动触发时，在清空 DISPLAY / WAYLAND_DISPLAY 的 Linux 环境中执行测试和构建，并实际启动服务验证鉴权、静态页面、独立数据库创建及正常退出。目标 Linux 的发行版与运行环境仍需部署时验证。
+当前本地开发验证环境是 Windows。独立的 `web-ci.yml` 在相关改动推送到 `main`、提交 PR 或手动触发时，在 Ubuntu 22.04 和 Alibaba Cloud Linux 3 官方容器镜像中检查无桌面依赖、执行构建和测试，并实际启动服务验证鉴权、静态页面、宿主机 CLI 探测、独立数据库创建及正常退出。容器只用于 CI，正式部署仍是宿主机原生 systemd 服务；目标服务器上的服务安装与启动仍需实机验证。
 
 ## 一键启动（源码工程）
 
@@ -74,15 +74,15 @@ pnpm start:web --open
 
 修改代码或更新工程后使用不带 `--no-build` 的命令。脚本使用调试构建，便于本地运行；生产部署仍建议使用下面的 release 构建和 systemd 服务。
 
-## 一键部署（Ubuntu 22.04 / x86_64）
+## 一键部署（Ubuntu 22.04 / Alibaba Cloud Linux 3，x86_64）
 
-在以 systemd 运行的 Ubuntu 22.04 x86_64 服务器上，以**拥有目标 CLI 配置的普通用户**登录（需要 sudo 权限），在完整源码根目录执行：
+在以 systemd 运行的 Ubuntu 22.04 或 Alibaba Cloud Linux 3 x86_64 服务器上，以**拥有目标 CLI 配置的普通用户**登录（需要 sudo 权限），在完整源码根目录执行：
 
 ```bash
 bash deploy-web.sh
 ```
 
-无需预先安装 Node.js、pnpm、Rust 或图形桌面。脚本自动安装系统依赖，将仓库指定版本的 Node.js 和 pnpm 放入用户的独立工具目录，通过官方 rustup 准备 Rust，构建 release 版本，然后安装 `cc-switch-web.service`，启动服务并配置开机自启。脚本不替换系统 Node.js，也不修改 shell 启动文件。下载、构建和应用在线安装需要服务器能够访问对应的外网服务；首次 Rust 编译耗时较长，需要预留编译所用内存和磁盘。
+无需预先安装 Node.js、pnpm、Rust 或图形桌面。脚本分别通过 Ubuntu 的 apt-get 或 Alibaba Cloud Linux 的 dnf 安装构建依赖，不安装 GTK/WebKit；将仓库指定版本的 Node.js 和 pnpm 放入用户的独立工具目录，通过官方 rustup 准备 Rust，在目标系统原生构建 release 版本，然后安装 `cc-switch-web.service`，启动服务并配置开机自启。脚本不替换系统 Node.js，也不修改 shell 启动文件。下载、构建和应用在线安装需要服务器能够访问对应的外网服务；首次 Rust 编译耗时较长，需要预留编译所用内存和磁盘。
 
 安装路径为 `~/.local/share/cc-switch-web/`，数据仍为 `~/.cc-switch-web/`。访问令牌位于 `~/.cc-switch-web/web-access-token`，服务环境文件 `web-service.env` 包含同一令牌；两个文件均限制为 `0600`。已有令牌不会重置，已有数据库不会被脚本覆盖。正常服务启动仍执行前文说明的独立 Web 库导入及升级流程。
 
@@ -107,15 +107,15 @@ sudo systemctl stop cc-switch-web
 
 ## 手动构建与运行
 
-在仓库根目录执行。Node、pnpm、Rust 版本沿用仓库要求。Debian/Ubuntu 构建依赖沿用 `CONTRIBUTING.md`：
+在仓库根目录执行。Node、pnpm、Rust 版本沿用仓库要求。Web 构建只需以下原生依赖；桌面构建仍按 `CONTRIBUTING.md` 准备图形库：
 
 ```bash
-sudo apt-get install build-essential pkg-config libssl-dev libgtk-3-dev librsvg2-dev \
-  libayatana-appindicator3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev
+# Ubuntu 22.04
+sudo apt-get install build-essential cmake pkg-config libssl-dev
+# Alibaba Cloud Linux 3（二选一）
+# sudo dnf install gcc gcc-c++ make cmake pkgconf-pkg-config openssl-devel
 pnpm install --frozen-lockfile
 pnpm build:web
-# 现有 Tauri 库的编译宏要求桌面资源目录存在；独立服务不会使用其中的页面。
-mkdir -p dist
 cargo build --locked --release --manifest-path web-server/Cargo.toml
 
 # 首次生成令牌后妥善保存，后续启动应使用同一个令牌；不要提交到版本库。
@@ -123,7 +123,7 @@ export CC_SWITCH_WEB_TOKEN="$(openssl rand -hex 32)"
 ./web-server/target/release/cc-switch-web
 ```
 
-在浏览器访问 `http://127.0.0.1:8080`，输入启动时设置的令牌。服务不会打印令牌；可通过受控的环境配置将令牌交给管理员。生产部署可以只复制 Linux 构建得到的二进制和 `web/dist/`，Node 和 Rust 编译器无需保留。运行主机仍需匹配的系统共享库；不要复制 Windows 二进制到 Linux。
+在浏览器访问 `http://127.0.0.1:8080`，输入启动时设置的令牌。服务不会打印令牌；可通过受控的环境配置将令牌交给管理员。生产部署可以只复制与目标系统兼容的 Linux 二进制和 `web/dist/`，Node 和 Rust 编译器无需保留；CLI 自身仍可能需要 Node 等运行环境。Ubuntu 与 Alibaba Cloud Linux 的 glibc 版本不同，建议直接使用一键脚本在目标系统编译，不要直接跨发行版复制二进制。
 
 | 环境变量              | 默认值           | 用途                                                                      |
 | --------------------- | ---------------- | ------------------------------------------------------------------------- |

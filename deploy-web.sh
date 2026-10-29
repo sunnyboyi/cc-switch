@@ -6,20 +6,41 @@ fail() { printf '部署失败：%s\n' "$*" >&2; return 1; }
 usage() {
   cat <<'EOF'
 用法：bash deploy-web.sh [--help]
-支持 Ubuntu 22.04 / x86_64 / systemd。
+支持 Ubuntu 22.04 或 Alibaba Cloud Linux 3 / x86_64 / systemd。
 请以拥有目标 CLI 配置的普通用户运行，需要 sudo 权限。
 首次自动安装构建依赖并编译，后续执行会重新构建和部署。
 默认地址 127.0.0.1:8080，数据和令牌保存在 ~/.cc-switch-web/。
 EOF
 }
 
+check_distribution() {
+  case "$1:$2" in
+    ubuntu:22.04 | alinux:3 | alinux:3.*) ;;
+    *) fail '仅支持 Ubuntu 22.04 或 Alibaba Cloud Linux 3。'; return 1 ;;
+  esac
+}
+
+install_dependencies() {
+  case "$1" in
+    ubuntu)
+      sudo apt-get update
+      sudo apt-get install -y --no-install-recommends \
+        ca-certificates curl git openssl xz-utils build-essential cmake pkg-config libssl-dev
+      ;;
+    alinux)
+      sudo dnf install -y \
+        ca-certificates curl git openssl xz gcc gcc-c++ make cmake pkgconf-pkg-config openssl-devel
+      ;;
+    *) fail '不支持的软件包管理器。'; return 1 ;;
+  esac
+}
+
 check_platform() {
   [[ $(uname -s) == Linux && $(uname -m) == x86_64 ]] ||
-    { fail '仅支持 Ubuntu 22.04 / x86_64。'; return 1; }
+    { fail '仅支持 Linux / x86_64。'; return 1; }
   # shellcheck source=/dev/null
   source /etc/os-release
-  [[ ${ID:-} == ubuntu && ${VERSION_ID:-} == 22.04 ]] ||
-    { fail '仅支持 Ubuntu 22.04；其他发行版尚未验证。'; return 1; }
+  check_distribution "${ID:-}" "${VERSION_ID:-}" || return 1
   [[ $(id -u) != 0 ]] ||
     { fail '请以拥有 CLI 配置的普通用户运行，不要使用 sudo bash。'; return 1; }
   [[ -d /run/systemd/system ]] ||
@@ -120,10 +141,7 @@ main() {
   trap "rm -rf -- '$work_dir'" EXIT
 
   printf '准备系统依赖（需要 sudo）…\n'
-  sudo apt-get update
-  sudo apt-get install -y --no-install-recommends \
-    ca-certificates curl git openssl xz-utils build-essential pkg-config libssl-dev \
-    libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev
+  install_dependencies "$ID"
   if [[ ! -f $source_root/web-server/Cargo.toml || ! -f $source_root/package.json ]]; then
     source_root="$base/source"
     if [[ -e $source_root ]]; then
@@ -171,7 +189,6 @@ main() {
   printf '构建正式版本（首次编译耗时较长，现有服务继续运行）…\n'
   pnpm install --frozen-lockfile
   pnpm build:web
-  mkdir -p dist
   cargo "+$rust_version" build --locked --release --manifest-path web-server/Cargo.toml --target-dir "$base/build"
   local release_dir
   release_dir="$base/releases/$(date +%Y%m%d%H%M%S)-$$"

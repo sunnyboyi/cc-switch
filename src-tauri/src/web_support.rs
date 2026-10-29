@@ -51,7 +51,7 @@ macro_rules! reply {
 
 macro_rules! wait {
     ($value:expr) => {
-        reply!(tauri::async_runtime::block_on($value))
+        reply!(crate::runtime::block_on($value))
     };
 }
 
@@ -255,7 +255,7 @@ pub fn dispatch(
         )),
         "get_claude_desktop_status" => reply!(crate::claude_desktop_config::get_status(
             db,
-            tauri::async_runtime::block_on(state.proxy_service.is_running())
+            crate::runtime::block_on(state.proxy_service.is_running())
         )),
         "get_global_proxy_url" => reply!(db.get_global_proxy_url()),
         "set_global_proxy_url" => {
@@ -267,9 +267,7 @@ pub fn dispatch(
             output(())
         }
         "test_proxy_url" => wait!(commands::test_proxy_url(arg(&args, "url")?)),
-        "scan_local_proxies" => output(tauri::async_runtime::block_on(
-            commands::scan_local_proxies(),
-        )),
+        "scan_local_proxies" => output(crate::runtime::block_on(commands::scan_local_proxies())),
         "get_upstream_proxy_status" => output(commands::get_upstream_proxy_status()),
         "list_db_backups" => reply!(commands::list_db_backups()),
         "create_db_backup" => {
@@ -307,7 +305,7 @@ pub fn dispatch(
         "resync_mcp_to_apps" => {
             let apps: Option<Vec<String>> = arg(&args, "apps")?;
             let targets = McpService::resync_targets(apps.as_deref())?;
-            output(tauri::async_runtime::block_on(async {
+            output(crate::runtime::block_on(async {
                 let mut outcomes = Vec::new();
                 for app in targets {
                     let _guard = state.proxy_service.lock_switch_for_app(app.as_str()).await;
@@ -442,7 +440,7 @@ pub fn dispatch(
                 .into_iter()
                 .find(|r| r.owner == owner && r.name == name)
             {
-                output(tauri::async_runtime::block_on(skills.discover_repo(&repo)))
+                output(crate::runtime::block_on(skills.discover_repo(&repo)))
             } else {
                 output(crate::services::skill::SkillDiscoveryResult::default())
             }
@@ -511,7 +509,7 @@ pub fn dispatch(
             &app(&args, "appType")?
         )),
         "set_proxy_stack_member" => {
-            let result = tauri::async_runtime::block_on(crate::mode::controller::set_stack_member(
+            let result = crate::runtime::block_on(crate::mode::controller::set_stack_member(
                 state,
                 &app(&args, "appType")?,
                 text(&args, "providerId")?,
@@ -526,10 +524,10 @@ pub fn dispatch(
         "get_global_proxy_config" => wait!(db.get_global_proxy_config()),
         "update_global_proxy_config" => {
             let config = arg(&args, "config")?;
-            if tauri::async_runtime::block_on(state.proxy_service.update_global_config(&config))
+            if crate::runtime::block_on(state.proxy_service.update_global_config(&config))
                 .map_err(message)?
             {
-                tauri::async_runtime::block_on(crate::mode::controller::resync_routes(state))
+                crate::runtime::block_on(crate::mode::controller::resync_routes(state))
                     .map_err(message)?;
             }
             output(())
@@ -551,7 +549,7 @@ pub fn dispatch(
             config.enabled = crate::mode::current::is_proxy(&app);
             let circuit = crate::proxy::CircuitBreakerConfig::from(&config);
             let app_type = config.app_type.clone();
-            tauri::async_runtime::block_on(db.update_proxy_config_for_app(config))?;
+            crate::runtime::block_on(db.update_proxy_config_for_app(config))?;
             wait!(state
                 .proxy_service
                 .update_circuit_breaker_config_for_app(&app_type, circuit))
@@ -561,7 +559,7 @@ pub fn dispatch(
             wait!(db.set_pricing_model_source(text(&args, "appType")?, text(&args, "value")?))
         }
         "get_auto_failover_enabled" => output(
-            tauri::async_runtime::block_on(db.get_proxy_config_for_app(text(&args, "appType")?))?
+            crate::runtime::block_on(db.get_proxy_config_for_app(text(&args, "appType")?))?
                 .auto_failover_enabled,
         ),
         "get_failover_queue" => {
@@ -663,7 +661,7 @@ pub fn dispatch(
                     crate::config::get_app_config_dir()
                 }
                 "open_config_folder" => std::path::PathBuf::from(
-                    tauri::async_runtime::block_on(commands::get_config_dir(arg(&args, "app")?))
+                    crate::runtime::block_on(commands::get_config_dir(arg(&args, "app")?))
                         .map_err(message)?,
                 ),
                 _ => return Err(AppError::InvalidInput("不支持此目录类型".into())),
@@ -781,7 +779,7 @@ pub fn dispatch(
             output(crate::services::session_usage::last_sync_completed_at())
         }
         "sync_session_usage" => {
-            let _guard = tauri::async_runtime::block_on(
+            let _guard = crate::runtime::block_on(
                 crate::services::session_usage::session_sync_mutex().lock(),
             );
             output(crate::services::session_usage::sync_all_unlocked(db))
@@ -863,15 +861,14 @@ pub fn dispatch(
 /// Start the same session-log synchronizer used by desktop, without a window.
 pub fn start_background_tasks(state: &AppState) {
     let db = state.db.clone();
-    tauri::async_runtime::spawn(async move {
+    crate::runtime::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
         loop {
             interval.tick().await;
             let maintenance_db = db.clone();
-            let _ = tauri::async_runtime::spawn_blocking(move || {
-                maintenance_db.periodic_backup_if_needed()
-            })
-            .await;
+            let _ =
+                crate::runtime::spawn_blocking(move || maintenance_db.periodic_backup_if_needed())
+                    .await;
             if !crate::settings::get_settings().session_auto_sync_enabled {
                 continue;
             }
@@ -879,7 +876,7 @@ pub fn start_background_tasks(state: &AppState) {
                 .lock()
                 .await;
             let db = db.clone();
-            let _ = tauri::async_runtime::spawn_blocking(move || {
+            let _ = crate::runtime::spawn_blocking(move || {
                 crate::services::session_usage::sync_all_unlocked(&db)
             })
             .await;

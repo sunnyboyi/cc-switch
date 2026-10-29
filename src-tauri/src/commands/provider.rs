@@ -1,15 +1,26 @@
+#[cfg(feature = "desktop")]
 use indexmap::IndexMap;
+#[cfg(feature = "desktop")]
 use tauri::{Emitter, Manager, State};
 
 use crate::app_config::AppType;
+#[cfg(feature = "desktop")]
 use crate::commands::copilot::CopilotAuthState;
+#[cfg(feature = "desktop")]
 use crate::commands::xai_oauth::XaiOAuthState;
 use crate::error::AppError;
+#[cfg(not(feature = "desktop"))]
+use crate::provider::Provider;
+#[cfg(feature = "desktop")]
 use crate::provider::{ClaudeDesktopMode, Provider, ProviderMeta};
+#[cfg(feature = "desktop")]
 use crate::services::provider::{EditorSave, EditorView};
+#[cfg(feature = "desktop")]
 use crate::services::{
     EndpointLatency, ProviderService, ProviderSortUpdate, SpeedtestService, SwitchResult,
 };
+#[cfg(not(feature = "desktop"))]
+use crate::services::{EndpointLatency, ProviderService, SpeedtestService, SwitchResult};
 use crate::store::AppState;
 use std::str::FromStr;
 
@@ -20,8 +31,9 @@ const TEMPLATE_TYPE_BALANCE: &str = "balance";
 const TEMPLATE_TYPE_OFFICIAL_SUBSCRIPTION: &str = "official_subscription";
 const COPILOT_UNIT_PREMIUM: &str = "requests";
 
+#[cfg(feature = "desktop")]
 /// 获取所有供应商
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_providers(
     state: State<'_, AppState>,
     app: String,
@@ -30,13 +42,15 @@ pub fn get_providers(
     ProviderService::list(state.inner(), app_type).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_current_provider(state: State<'_, AppState>, app: String) -> Result<String, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     ProviderService::current(state.inner(), app_type).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn add_provider(
     app_handle: tauri::AppHandle,
     app: String,
@@ -46,7 +60,7 @@ pub async fn add_provider(
 ) -> Result<bool, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     let add_to_live = addToLive.unwrap_or(true);
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::runtime::spawn_blocking(move || {
         let state = app_handle
             .try_state::<AppState>()
             .ok_or_else(|| "应用状态不可用".to_string())?;
@@ -57,7 +71,8 @@ pub async fn add_provider(
     .map_err(|e| format!("供应商添加任务执行失败: {e}"))?
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn update_provider(
     app_handle: tauri::AppHandle,
     app: String,
@@ -66,7 +81,7 @@ pub async fn update_provider(
     #[allow(non_snake_case)] editorSave: Option<EditorSave>,
 ) -> Result<bool, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::runtime::spawn_blocking(move || {
         let state = app_handle
             .try_state::<AppState>()
             .ok_or_else(|| "应用状态不可用".to_string())?;
@@ -83,10 +98,11 @@ pub async fn update_provider(
     .map_err(|e| format!("供应商更新任务执行失败: {e}"))?
 }
 
+#[cfg(feature = "desktop")]
 /// 供应商编辑器底部 JSON 的显示内容：切到这个供应商之后配置文件会是什么样。
 /// `settingsConfig` 是供应商的行（新增时传空对象）。
 /// Codex draft metadata wins over the stored provider's metadata when supplied.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_provider_editor_view(
     app_handle: tauri::AppHandle,
     app: String,
@@ -96,7 +112,7 @@ pub async fn get_provider_editor_view(
     meta: Option<ProviderMeta>,
 ) -> Result<EditorView, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::runtime::spawn_blocking(move || {
         let state = app_handle
             .try_state::<AppState>()
             .ok_or_else(|| "应用状态不可用".to_string())?;
@@ -121,7 +137,8 @@ pub async fn get_provider_editor_view(
     .map_err(|e| format!("读取编辑器内容失败: {e}"))?
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn delete_provider(
     state: State<'_, AppState>,
     app: String,
@@ -133,7 +150,8 @@ pub fn delete_provider(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn add_provider_to_live_config(
     state: tauri::State<'_, AppState>,
     app: String,
@@ -145,7 +163,8 @@ pub fn add_provider_to_live_config(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn remove_provider_from_live_config(
     state: tauri::State<'_, AppState>,
     app: String,
@@ -174,7 +193,8 @@ pub fn switch_provider_test_hook(
     switch_provider_internal(state, app_type, id)
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn switch_provider(
     app_handle: tauri::AppHandle,
     app: String,
@@ -182,7 +202,7 @@ pub async fn switch_provider(
 ) -> Result<SwitchResult, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     let handle = app_handle.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
+    let result = crate::runtime::spawn_blocking(move || {
         let state = handle
             .try_state::<AppState>()
             .ok_or_else(|| "应用状态不可用".to_string())?;
@@ -269,13 +289,15 @@ pub fn import_default_config_test_hook(
     import_default_config_internal(state, app_type)
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn import_default_config(state: State<'_, AppState>, app: String) -> Result<bool, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     import_default_config_internal(&state, app_type).map_err(Into::into)
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_claude_desktop_status(
     state: State<'_, AppState>,
 ) -> Result<crate::claude_desktop_config::ClaudeDesktopStatus, String> {
@@ -284,13 +306,14 @@ pub async fn get_claude_desktop_status(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_claude_desktop_default_routes(
 ) -> Vec<crate::claude_desktop_config::ClaudeDesktopDefaultRoute> {
     crate::claude_desktop_config::default_proxy_routes()
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn import_claude_desktop_providers_from_claude(
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
@@ -344,7 +367,8 @@ pub fn import_claude_desktop_providers_from_claude(
     Ok(imported)
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn ensure_claude_desktop_official_provider(state: State<'_, AppState>) -> Result<bool, String> {
     state
         .db
@@ -355,7 +379,8 @@ pub fn ensure_claude_desktop_official_provider(state: State<'_, AppState>) -> Re
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn ensure_codex_official_provider(state: State<'_, AppState>) -> Result<bool, String> {
     state
         .db
@@ -363,7 +388,8 @@ pub fn ensure_codex_official_provider(state: State<'_, AppState>) -> Result<bool
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn ensure_grokbuild_official_provider(state: State<'_, AppState>) -> Result<bool, String> {
     state
         .db
@@ -513,8 +539,9 @@ pub(crate) fn suggested_claude_desktop_routes(
     (!routes.is_empty()).then_some(routes)
 }
 
+#[cfg(feature = "desktop")]
 #[allow(non_snake_case)]
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn queryProviderUsage(
     app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
@@ -602,6 +629,7 @@ fn resolve_coding_plan_credentials(
     }
 }
 
+#[cfg(feature = "desktop")]
 async fn query_provider_usage_inner(
     state: &AppState,
     copilot_state: &CopilotAuthState,
@@ -835,9 +863,10 @@ async fn query_provider_usage_inner(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 #[allow(non_snake_case)]
 #[allow(clippy::too_many_arguments)]
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn testUsageScript(
     state: State<'_, AppState>,
     #[allow(non_snake_case)] providerId: String,
@@ -867,13 +896,13 @@ pub async fn testUsageScript(
     .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn read_live_provider_settings(app: String) -> Result<serde_json::Value, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     ProviderService::read_live_settings(app_type).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn test_api_endpoints(
     urls: Vec<String>,
     #[allow(non_snake_case)] timeoutSecs: Option<u64>,
@@ -883,7 +912,8 @@ pub async fn test_api_endpoints(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_custom_endpoints(
     state: State<'_, AppState>,
     app: String,
@@ -894,7 +924,8 @@ pub fn get_custom_endpoints(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn add_custom_endpoint(
     state: State<'_, AppState>,
     app: String,
@@ -906,7 +937,8 @@ pub fn add_custom_endpoint(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn remove_custom_endpoint(
     state: State<'_, AppState>,
     app: String,
@@ -918,7 +950,8 @@ pub fn remove_custom_endpoint(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn update_endpoint_last_used(
     state: State<'_, AppState>,
     app: String,
@@ -930,12 +963,13 @@ pub fn update_endpoint_last_used(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "desktop")]
 /// 排序就是故障转移队列的优先级，托盘按它列队列：改完重建托盘。聚合名单也跟着重排，
 /// 客户端看到的聚合模型顺序才和界面一致。
 ///
 /// 整段串行：异步命令不再在主线程排队，两次拖动的逐行写入会交错成哪次都不是的顺序。
 /// 聚合名单发布失败时报错（排序已经存下），再拖一次就会重试发布。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn update_providers_sort_order(
     app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
@@ -955,8 +989,11 @@ pub async fn update_providers_sort_order(
     Ok(changed)
 }
 
+#[cfg(feature = "desktop")]
 use crate::provider::UniversalProvider;
+#[cfg(feature = "desktop")]
 use std::collections::HashMap;
+#[cfg(feature = "desktop")]
 use tauri::AppHandle;
 
 #[derive(Clone, serde::Serialize)]
@@ -965,6 +1002,7 @@ pub struct UniversalProviderSyncedEvent {
     pub id: String,
 }
 
+#[cfg(feature = "desktop")]
 fn emit_universal_provider_synced(app: &AppHandle, action: &str, id: &str) {
     let _ = app.emit(
         "universal-provider-synced",
@@ -975,14 +1013,16 @@ fn emit_universal_provider_synced(app: &AppHandle, action: &str, id: &str) {
     );
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_universal_providers(
     state: State<'_, AppState>,
 ) -> Result<HashMap<String, UniversalProvider>, String> {
     ProviderService::list_universal(state.inner()).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_universal_provider(
     state: State<'_, AppState>,
     id: String,
@@ -990,7 +1030,8 @@ pub fn get_universal_provider(
     ProviderService::get_universal(state.inner(), &id).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn upsert_universal_provider(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1005,7 +1046,8 @@ pub fn upsert_universal_provider(
     Ok(result)
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn delete_universal_provider(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1019,7 +1061,8 @@ pub fn delete_universal_provider(
     Ok(result)
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn sync_universal_provider(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1033,13 +1076,14 @@ pub fn sync_universal_provider(
     Ok(result)
 }
 
-#[tauri::command]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn import_opencode_providers_from_live(state: State<'_, AppState>) -> Result<usize, String> {
     crate::services::provider::import_opencode_providers_from_live(state.inner())
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_opencode_live_provider_ids() -> Result<Vec<String>, String> {
     crate::opencode_config::get_providers()
         .map(|providers| providers.keys().cloned().collect())
@@ -1047,12 +1091,12 @@ pub fn get_opencode_live_provider_ids() -> Result<Vec<String>, String> {
 }
 
 /// OpenCode 顶层 `model`（`<provider>/<model>`）
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn get_opencode_default_model() -> Result<Option<String>, String> {
     crate::opencode_config::get_default_model().map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn set_opencode_default_model(model: String) -> Result<(), String> {
     crate::opencode_config::set_default_model(&model).map_err(|e| e.to_string())
 }

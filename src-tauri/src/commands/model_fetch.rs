@@ -18,7 +18,7 @@ pub struct OpenCodeModelRef {
 /// Without a key this asks the signed-in agy. With a key it runs agy in API-key mode from a
 /// throwaway `--gemini_dir`: that mode only accepts agy's built-in Gemini models (by display
 /// name), which the Gemini API's own model list does not match.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 #[allow(non_snake_case)]
 pub async fn get_agy_models(
     apiKey: Option<String>,
@@ -106,7 +106,7 @@ const OPENCODE_MODELS_TIMEOUT: std::time::Duration = std::time::Duration::from_s
 ///
 /// 复用工具更新页的 CLI 定位逻辑执行 `opencode models`，因此会包含 OpenCode
 /// 已加载的 OAuth 模型与 Zen 免费模型，而不是只读取 opencode.json。
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_opencode_models() -> Result<Vec<OpenCodeModelRef>, String> {
     tokio::task::spawn_blocking(|| {
         // Align runtime discovery with the OpenCode config directory that
@@ -178,7 +178,7 @@ fn parse_opencode_models(output: &str) -> Vec<OpenCodeModelRef> {
 ///
 /// 使用 OpenAI 兼容的 GET /v1/models 端点。优先使用 `models_url` 精确覆写；
 /// 否则对 baseURL 生成候选列表（含「剥离 Anthropic 兼容子路径」兜底），按序尝试。
-#[tauri::command(rename_all = "camelCase")]
+#[cfg_attr(feature = "desktop", tauri::command(rename_all = "camelCase"))]
 pub async fn fetch_models_for_config(
     base_url: String,
     api_key: String,

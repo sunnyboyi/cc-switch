@@ -1,26 +1,43 @@
+#[cfg(feature = "desktop")]
 use tauri::State;
 
 use crate::app_config::AppType;
+#[cfg(feature = "desktop")]
 use crate::commands::agy_account::AgyAccountState;
+#[cfg(feature = "desktop")]
 use crate::commands::claude_account::ClaudeAccountState;
+#[cfg(feature = "desktop")]
 use crate::commands::codex_oauth::CodexOAuthState;
+#[cfg(feature = "desktop")]
 use crate::commands::copilot::CopilotAuthState;
+#[cfg(feature = "desktop")]
 use crate::commands::xai_oauth::XaiOAuthState;
+#[cfg(feature = "desktop")]
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthError;
+#[cfg(feature = "desktop")]
 use crate::proxy::providers::copilot_auth::{
     CopilotAuthError, GitHubAccount, GitHubDeviceCodeResponse,
 };
+#[cfg(feature = "desktop")]
 use crate::proxy::providers::xai_oauth_auth::{XaiOAuthAccount, XaiOAuthError};
+#[cfg(feature = "desktop")]
 use crate::services::agy_account::AgyAccount;
+#[cfg(feature = "desktop")]
 use crate::services::claude_account::ClaudeAccount;
 use crate::store::AppState;
 
+#[cfg(feature = "desktop")]
 const AUTH_PROVIDER_GITHUB_COPILOT: &str = "github_copilot";
+#[cfg(feature = "desktop")]
 const AUTH_PROVIDER_CODEX_OAUTH: &str = "codex_oauth";
+#[cfg(feature = "desktop")]
 const AUTH_PROVIDER_XAI_OAUTH: &str = "xai_oauth";
+#[cfg(feature = "desktop")]
 const AUTH_PROVIDER_AGY_OAUTH: &str = "agy_oauth";
+#[cfg(feature = "desktop")]
 const AUTH_PROVIDER_CLAUDE_OFFICIAL: &str = "claude_official";
 
+#[cfg(feature = "desktop")]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ManagedAuthAccount {
     pub id: String,
@@ -45,6 +62,7 @@ pub struct ManagedAuthAccount {
     pub rate_limit_tier: Option<String>,
 }
 
+#[cfg(feature = "desktop")]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ManagedAuthStatus {
     pub provider: String,
@@ -54,6 +72,7 @@ pub struct ManagedAuthStatus {
     pub accounts: Vec<ManagedAuthAccount>,
 }
 
+#[cfg(feature = "desktop")]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ManagedAuthDeviceCodeResponse {
     pub provider: String,
@@ -67,6 +86,7 @@ pub struct ManagedAuthDeviceCodeResponse {
     pub browser_opened: bool,
 }
 
+#[cfg(feature = "desktop")]
 fn ensure_auth_provider(auth_provider: &str) -> Result<&'static str, String> {
     match auth_provider {
         AUTH_PROVIDER_GITHUB_COPILOT => Ok(AUTH_PROVIDER_GITHUB_COPILOT),
@@ -78,6 +98,7 @@ fn ensure_auth_provider(auth_provider: &str) -> Result<&'static str, String> {
     }
 }
 
+#[cfg(feature = "desktop")]
 fn map_account(
     provider: &str,
     account: GitHubAccount,
@@ -99,6 +120,7 @@ fn map_account(
     }
 }
 
+#[cfg(feature = "desktop")]
 fn map_xai_account(
     account: XaiOAuthAccount,
     default_account_id: Option<&str>,
@@ -119,6 +141,7 @@ fn map_xai_account(
     }
 }
 
+#[cfg(feature = "desktop")]
 fn map_agy_account(account: AgyAccount, current_account_id: Option<&str>) -> ManagedAuthAccount {
     ManagedAuthAccount {
         is_default: current_account_id == Some(account.id.as_str()),
@@ -136,6 +159,7 @@ fn map_agy_account(account: AgyAccount, current_account_id: Option<&str>) -> Man
     }
 }
 
+#[cfg(feature = "desktop")]
 /// Claude 官方账号没有「默认账号」：用哪个号由绑定它的官方卡决定。
 fn map_claude_account(account: ClaudeAccount) -> ManagedAuthAccount {
     ManagedAuthAccount {
@@ -154,6 +178,7 @@ fn map_claude_account(account: ClaudeAccount) -> ManagedAuthAccount {
     }
 }
 
+#[cfg(feature = "desktop")]
 fn map_device_code_response(
     provider: &str,
     response: GitHubDeviceCodeResponse,
@@ -169,8 +194,9 @@ fn map_device_code_response(
     }
 }
 
+#[cfg(feature = "desktop")]
 #[allow(clippy::too_many_arguments)]
-#[tauri::command(rename_all = "camelCase")]
+#[cfg_attr(feature = "desktop", tauri::command(rename_all = "camelCase"))]
 pub async fn auth_start_login(
     auth_provider: String,
     github_domain: Option<String>,
@@ -265,8 +291,9 @@ pub async fn auth_start_login(
     }
 }
 
+#[cfg(feature = "desktop")]
 #[allow(clippy::too_many_arguments)]
-#[tauri::command(rename_all = "camelCase")]
+#[cfg_attr(feature = "desktop", tauri::command(rename_all = "camelCase"))]
 pub async fn auth_poll_for_account(
     auth_provider: String,
     device_code: String,
@@ -366,7 +393,8 @@ pub async fn auth_poll_for_account(
     }
 }
 
-#[tauri::command(rename_all = "camelCase")]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command(rename_all = "camelCase"))]
 pub async fn auth_cancel_login(
     auth_provider: String,
     device_code: String,
@@ -383,7 +411,8 @@ pub async fn auth_cancel_login(
     }
 }
 
-#[tauri::command(rename_all = "camelCase")]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command(rename_all = "camelCase"))]
 pub async fn auth_list_accounts(
     auth_provider: String,
     copilot_state: State<'_, CopilotAuthState>,
@@ -444,7 +473,8 @@ pub async fn auth_list_accounts(
     }
 }
 
-#[tauri::command(rename_all = "camelCase")]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command(rename_all = "camelCase"))]
 pub async fn auth_get_status(
     auth_provider: String,
     copilot_state: State<'_, CopilotAuthState>,
@@ -537,7 +567,8 @@ pub async fn auth_get_status(
     }
 }
 
-#[tauri::command(rename_all = "camelCase")]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command(rename_all = "camelCase"))]
 pub async fn auth_remove_account(
     auth_provider: String,
     account_id: String,
@@ -614,7 +645,8 @@ pub(crate) async fn remove_codex_oauth_account_with_switch_lock(
     Ok(())
 }
 
-#[tauri::command(rename_all = "camelCase")]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command(rename_all = "camelCase"))]
 pub async fn auth_set_default_account(
     auth_provider: String,
     account_id: String,
@@ -661,7 +693,8 @@ pub async fn auth_set_default_account(
     }
 }
 
-#[tauri::command(rename_all = "camelCase")]
+#[cfg(feature = "desktop")]
+#[cfg_attr(feature = "desktop", tauri::command(rename_all = "camelCase"))]
 pub async fn auth_logout(
     auth_provider: String,
     app_state: State<'_, AppState>,

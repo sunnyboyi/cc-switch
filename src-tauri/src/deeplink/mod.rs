@@ -26,11 +26,18 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 // Re-export public API
+#[cfg(feature = "desktop")]
 pub use icon_fetch::fetch_deeplink_icon;
+#[cfg(feature = "desktop")]
 pub use mcp::import_mcp_from_deeplink;
 pub use parser::parse_deeplink_url;
+#[cfg(feature = "desktop")]
 pub use prompt::import_prompt_from_deeplink;
+#[cfg(not(feature = "desktop"))]
+pub use provider::import_provider_from_deeplink;
+#[cfg(feature = "desktop")]
 pub use provider::{import_provider_from_deeplink, parse_and_merge_config};
+#[cfg(feature = "desktop")]
 pub use skill::import_skill_from_deeplink;
 
 /// 等前端处理的深链接（解析结果或解析错误）

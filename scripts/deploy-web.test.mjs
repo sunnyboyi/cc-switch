@@ -23,10 +23,44 @@ test("deployment help works without installing anything; unknown arguments fail"
   const help = shell('bash "$1" --help');
   assert.equal(help.status, 0, help.stderr);
   assert.match(help.stdout, /Ubuntu 22.04/);
+  assert.match(help.stdout, /Alibaba Cloud Linux 3/);
   const invalid = shell('bash "$1" --unknown');
   assert.notEqual(invalid.status, 0);
   assert.match(invalid.stderr, /未知参数/);
 });
+
+test("only supported distribution versions are accepted", () => {
+  const result = shell(`
+    source "$1"
+    check_distribution ubuntu 22.04
+    check_distribution alinux 3
+    check_distribution alinux 3.2104
+    for pair in 'ubuntu 24.04' 'alinux 2' 'alinux 4' 'alinux 30' 'centos 8'; do
+      if check_distribution $pair; then exit 1; fi
+    done
+  `);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+for (const distribution of ["ubuntu", "alinux"]) {
+  test(`${distribution} installs native build dependencies without desktop libraries`, () => {
+    const result = shell(`
+      source "$1"
+      sudo() { printf '%s\\n' "$*"; }
+      install_dependencies ${distribution}
+    `);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(
+      result.stdout,
+      distribution === "ubuntu" ? /apt-get install/ : /dnf install/,
+    );
+    assert.match(
+      result.stdout,
+      distribution === "ubuntu" ? /libssl-dev/ : /openssl-devel/,
+    );
+    assert.doesNotMatch(result.stdout, /gtk|webkit|soup|appindicator|xvfb/i);
+  });
+}
 
 test("repeated deployments preserve the token and quote service credentials without shell expansion", () => {
   const result = shell(String.raw`

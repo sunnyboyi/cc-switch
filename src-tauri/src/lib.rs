@@ -1,8 +1,12 @@
+// Web exposes a subset of the shared business library; desktop-only callers are absent.
+#![cfg_attr(not(feature = "desktop"), allow(dead_code))]
+
 mod agy_config;
 #[cfg(all(test, unix))]
 mod agy_smoke_tests;
 mod app_config;
 mod app_store;
+#[cfg(feature = "desktop")]
 mod auto_launch;
 mod claude_desktop_config;
 mod claude_mcp;
@@ -15,6 +19,7 @@ mod commands;
 mod config;
 mod database;
 mod deeplink;
+mod desktop_handle;
 mod dsh_config;
 mod error;
 mod gemini_config;
@@ -25,7 +30,9 @@ mod init_status;
 mod jsonc_document;
 mod kimi_config;
 mod kimi_session;
+#[cfg(feature = "desktop")]
 mod lightweight;
+#[cfg(feature = "desktop")]
 #[cfg(target_os = "linux")]
 mod linux_fix;
 pub mod live;
@@ -42,14 +49,18 @@ mod prompt;
 mod prompt_files;
 mod provider;
 mod proxy;
+mod runtime;
 mod services;
 mod session_manager;
 mod settings;
 mod store;
 
+#[cfg(feature = "desktop")]
 mod tray;
+#[cfg(feature = "desktop")]
 #[cfg(target_os = "windows")]
 mod tray_compat;
+#[cfg(feature = "desktop")]
 mod tray_panel;
 mod usage_events;
 mod usage_script;
@@ -64,6 +75,7 @@ pub use codex_config::{
     extract_codex_experimental_bearer_token, get_codex_auth_path, get_codex_config_path,
     read_codex_live_settings, write_codex_live_atomic,
 };
+#[cfg(feature = "desktop")]
 pub use commands::open_provider_terminal;
 pub use commands::*;
 pub use config::{get_claude_mcp_path, get_claude_settings_path, read_json_file};
@@ -89,16 +101,26 @@ pub use services::{
 };
 pub use settings::{update_settings, AppSettings};
 pub use store::AppState;
+#[cfg(feature = "desktop")]
 use tauri_plugin_deep_link::DeepLinkExt;
+#[cfg(feature = "desktop")]
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
+use std::fmt;
+#[cfg(feature = "desktop")]
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::{fmt, sync::Arc};
+#[cfg(feature = "desktop")]
+use std::sync::Arc;
+#[cfg(feature = "desktop")]
 use tauri::tray::TrayIconBuilder;
+#[cfg(feature = "desktop")]
 use tauri::RunEvent;
+#[cfg(feature = "desktop")]
 use tauri::{Emitter, Manager};
+#[cfg(feature = "desktop")]
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
+#[cfg(feature = "desktop")]
 #[cfg(target_os = "windows")]
 fn set_windows_app_user_model_id(app: &tauri::AppHandle) {
     let app_id = app.config().identifier.clone();
@@ -267,10 +289,12 @@ pub(crate) fn error_for_log(error: &str) -> String {
         .join("\n")
 }
 
+#[cfg(feature = "desktop")]
 fn runtime_log_level_allows(level: log::Level, max_level: log::LevelFilter) -> bool {
     max_level.to_level().is_some_and(|maximum| level <= maximum)
 }
 
+#[cfg(feature = "desktop")]
 /// 统一处理 ccswitch:// 深链接 URL
 ///
 /// - 解析 URL，把结果（或错误）暂存为待处理深链接，再发 `deeplink-pending` 通知前端来读
@@ -337,6 +361,7 @@ fn handle_deeplink_url(
     true
 }
 
+#[cfg(feature = "desktop")]
 /// 更新托盘菜单的Tauri命令
 #[tauri::command]
 async fn update_tray_menu(
@@ -364,10 +389,12 @@ async fn update_tray_menu(
     }
 }
 
+#[cfg(feature = "desktop")]
 /// 本进程打开文件描述符的软上限目标。macOS 的 `setrlimit` 不接受超过 `OPEN_MAX`（10240）的值。
 #[cfg(unix)]
 const OPEN_FILE_SOFT_LIMIT_TARGET: libc::rlim_t = 10240;
 
+#[cfg(feature = "desktop")]
 /// 从 Finder / 登录项启动的 macOS 应用继承 launchd 的软上限，默认只有 256 个文件描述符。
 /// 本地路由并发时客户端连接、上游连接、日志、数据库和配置文件都要占用描述符，突发请求下
 /// accept、上游连接和打开数据库会一起报 EMFILE（Too many open files）。启动时把软上限
@@ -403,6 +430,7 @@ fn raise_open_file_limit() {
     }
 }
 
+#[cfg(feature = "desktop")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 设置 panic hook，在应用崩溃时记录日志到 <app_config_dir>/crash.log（默认 ~/.cc-switch/crash.log）
@@ -2033,6 +2061,7 @@ pub fn run() {
 // 应用退出清理
 // ============================================================
 
+#[cfg(feature = "desktop")]
 /// 应用退出前的清理工作
 ///
 /// 把接上代理的客户端都指回直连（模式和代理路由保留，下次启动再接上），再停止代理。
@@ -2044,9 +2073,11 @@ pub async fn cleanup_before_exit(app_handle: &tauri::AppHandle) {
     }
 }
 
+#[cfg(feature = "desktop")]
 /// 系统终止应用时最多等退出清理这么久：停代理服务自带 5 秒超时，指回直连只是写几个文件。
 const SYSTEM_EXIT_CLEANUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
 
+#[cfg(feature = "desktop")]
 /// 系统直接终止应用时（macOS ⌘Q、Dock「退出」、注销关机）的退出清理。
 ///
 /// 这条路没有 `ExitRequested` 可以 `prevent_exit()` 再异步清理，只能在主线程上等清理做完。
@@ -2068,6 +2099,7 @@ fn cleanup_before_system_exit(app_handle: &tauri::AppHandle) {
     }
 }
 
+#[cfg(feature = "desktop")]
 /// 主动从系统托盘移除托盘图标。
 ///
 /// `std::process::exit` 会绕过 Tauri 运行时，触发不了 `TrayIcon::drop()`，
@@ -2088,6 +2120,7 @@ pub(crate) fn remove_tray_icon_before_exit(app_handle: &tauri::AppHandle) {
     }
 }
 
+#[cfg(any(feature = "desktop", test))]
 fn initialize_common_config_snippets(state: &store::AppState) {
     // Auto-extract common config snippets from clean live files when snippet is missing.
     // This must run before proxy mode is re-attached on startup, otherwise we'd read
@@ -2175,6 +2208,7 @@ fn initialize_common_config_snippets(state: &store::AppState) {
 // 迁移错误对话框辅助函数
 // ============================================================
 
+#[cfg(feature = "desktop")]
 /// 检测是否为中文环境
 fn is_chinese_locale() -> bool {
     std::env::var("LANG")
@@ -2184,6 +2218,7 @@ fn is_chinese_locale() -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(feature = "desktop")]
 /// 显示迁移错误对话框
 /// 返回 true 表示用户选择重试，false 表示用户选择退出
 fn show_migration_error_dialog(app: &tauri::AppHandle, error: &str) -> bool {
@@ -2235,6 +2270,7 @@ fn show_migration_error_dialog(app: &tauri::AppHandle, error: &str) -> bool {
         .blocking_show()
 }
 
+#[cfg(feature = "desktop")]
 /// 显示数据库初始化/Schema 迁移失败对话框
 /// 返回 true 表示用户选择重试，false 表示用户选择退出
 fn show_database_init_error_dialog(
@@ -2304,6 +2340,7 @@ fn show_database_init_error_dialog(
 // 退出请求分类
 // ============================================================
 
+#[cfg(feature = "desktop")]
 /// `RunEvent::ExitRequested` 的三类来源，处理方式必须区分。
 ///
 /// 关键约束：重启请求（`code == RESTART_EXIT_CODE`）上 `prevent_exit()` 会被
@@ -2323,9 +2360,11 @@ enum ExitRequestAction {
     CleanupAndExit,
 }
 
+#[cfg(feature = "desktop")]
 /// 收到过重启请求。重启时 Tauri 也会发 `RunEvent::Exit`，靠它跳过系统终止那条清理。
 static RESTART_REQUESTED: AtomicBool = AtomicBool::new(false);
 
+#[cfg(feature = "desktop")]
 fn classify_exit_request(code: Option<i32>) -> ExitRequestAction {
     match code {
         None => ExitRequestAction::StayInTray,
@@ -2338,10 +2377,12 @@ fn classify_exit_request(code: Option<i32>) -> ExitRequestAction {
 // 在应用主动退出前显式持久化窗口状态
 // ============================================================
 
+#[cfg(feature = "desktop")]
 fn window_state_flags() -> StateFlags {
     StateFlags::POSITION | StateFlags::SIZE | StateFlags::MAXIMIZED
 }
 
+#[cfg(feature = "desktop")]
 /// 当前应用的退出路径会拦截 `ExitRequested` 并最终直接 `std::process::exit(0)`，
 /// 这里需要在真正结束进程前手动落盘，避免 window-state 插件的默认退出钩子被绕过。
 pub fn save_window_state_before_exit(app_handle: &tauri::AppHandle) {
@@ -2352,6 +2393,7 @@ pub fn save_window_state_before_exit(app_handle: &tauri::AppHandle) {
     }
 }
 
+#[cfg(feature = "desktop")]
 /// 主动释放 single-instance 锁。
 ///
 /// macOS single-instance 使用 `/tmp/{identifier}.sock`。我们有若干路径会直接
@@ -2362,6 +2404,7 @@ pub fn destroy_single_instance_lock(app_handle: &tauri::AppHandle) {
     tauri_plugin_single_instance::destroy(app_handle);
 }
 
+#[cfg(feature = "desktop")]
 /// 清理托盘图标、释放 single-instance 锁后重启当前应用。
 ///
 /// 直接 spawn 新进程 + `exit(0)`（macOS 经 `open -n`，见 `relaunch_macos_bundle`），不经过事件
@@ -2381,6 +2424,7 @@ pub fn restart_process(app_handle: &tauri::AppHandle) -> ! {
     tauri::process::restart(&env);
 }
 
+#[cfg(feature = "desktop")]
 /// macOS 经 LaunchServices（`open -n`）启动新实例，成功即退出；失败时返回，
 /// 由调用方回落到 `tauri::process::restart`。
 ///
@@ -2413,6 +2457,7 @@ fn relaunch_macos_bundle(env: &tauri::Env) {
     }
 }
 
+#[cfg(feature = "desktop")]
 #[cfg(test)]
 mod tests {
     use super::{

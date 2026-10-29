@@ -8,6 +8,7 @@ on:
       - "web-server/**"
       - "scripts/start-web*"
       - "scripts/deploy-web*"
+      - "scripts/smoke-web.sh"
       - "deploy-web.sh"
       - "start-web.bat"
       - "start-web.sh"
@@ -28,6 +29,7 @@ on:
       - "web-server/**"
       - "scripts/start-web*"
       - "scripts/deploy-web*"
+      - "scripts/smoke-web.sh"
       - "deploy-web.sh"
       - "start-web.bat"
       - "start-web.sh"
@@ -83,8 +85,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev \
-            libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev
+          sudo apt-get install -y --no-install-recommends build-essential cmake pkg-config libssl-dev
       - name: Read pinned Rust toolchain
         id: rust-toolchain
         run: |
@@ -109,50 +110,80 @@ jobs:
           pnpm test:web-deploy
           sh -n start-web.sh
           bash -n deploy-web.sh
+          bash -n scripts/smoke-web.sh
           pnpm build:web
           pnpm exec prettier --check web scripts/start-web.mjs scripts/start-web.test.mjs scripts/deploy-web.test.mjs
       - name: Backend checks without a display server
         run: |
-          mkdir -p dist
           cargo fmt --manifest-path src-tauri/Cargo.toml --check
           cargo fmt --manifest-path web-server/Cargo.toml --check
           cargo clippy --locked --manifest-path web-server/Cargo.toml --all-targets -- -D warnings
           cargo test --locked --manifest-path web-server/Cargo.toml
-      - name: Start the Web service without a display server
+      - name: Shared business tests without desktop features
         run: |
-          set -euo pipefail
-          cargo build --locked --manifest-path web-server/Cargo.toml
-          export CC_SWITCH_TEST_HOME="$(mktemp -d)"
-          export CC_SWITCH_WEB_TOKEN="$(openssl rand -hex 32)"
-          export CC_SWITCH_WEB_BIND=127.0.0.1:18080
-          export CC_SWITCH_WEB_ROOT="$GITHUB_WORKSPACE/web/dist"
-          log="$RUNNER_TEMP/web-smoke.log"
-          ./web-server/target/debug/cc-switch-web > "$log" 2>&1 &
-          server_pid=$!
-          trap 'kill -TERM "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true' EXIT
-          ready=false
-          for attempt in $(seq 1 60); do
-            if curl --fail --silent --header "Authorization: Bearer $CC_SWITCH_WEB_TOKEN" \
-              http://127.0.0.1:18080/api/session > "$RUNNER_TEMP/web-session.json"; then
-              ready=true
-              break
-            fi
-            if ! kill -0 "$server_pid" 2>/dev/null; then
-              cat "$log"
-              exit 1
-            fi
-            sleep 1
-          done
-          if [ "$ready" != true ]; then
-            cat "$log"
-            echo "Web service did not become ready within 60 seconds"
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --no-default-features --features web --lib --config 'profile.dev.debug=0' --target-dir web-server/target -- -D warnings
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features --features web --lib --config 'profile.test.debug=0' --target-dir web-server/target
+      - name: Reject desktop dependencies in the Web build
+        run: |
+          cargo tree --locked --manifest-path web-server/Cargo.toml --edges normal,build --prefix none > "$RUNNER_TEMP/web-dependencies"
+          if grep -E '^(tauri([ -]|$)|gtk([ -]|$)|gdk([ -]|$)|webkit2gtk|wry([ -]|$)|tray-icon|muda([ -]|$)|arboard([ -]|$))' "$RUNNER_TEMP/web-dependencies"; then
             exit 1
           fi
-          test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
-            http://127.0.0.1:18080/api/session)" = 401
-          curl --fail --silent http://127.0.0.1:18080/ > /dev/null
-          test -f "$CC_SWITCH_TEST_HOME/.cc-switch-web/cc-switch-web.db"
-          test ! -e "$CC_SWITCH_TEST_HOME/.cc-switch/cc-switch.db"
-          kill -TERM "$server_pid"
-          wait "$server_pid"
-          trap - EXIT
+      - name: Start the Web service without a display server
+        run: |
+          cargo build --locked --manifest-path web-server/Cargo.toml
+          bash scripts/smoke-web.sh web-server/target/debug/cc-switch-web web/dist
+
+  web-alinux3:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    container:
+      image: alibaba-cloud-linux-3-registry.cn-hangzhou.cr.aliyuncs.com/alinux3/alinux3:3.9.1
+    env:
+      DISPLAY: ""
+      WAYLAND_DISPLAY: ""
+    steps:
+      - name: Prepare checkout dependencies
+        run: dnf install -y git ca-certificates curl
+      - uses: actions/checkout@v6
+      - name: Install Alibaba Cloud Linux native dependencies
+        shell: bash
+        run: |
+          source deploy-web.sh
+          sudo() { "$@"; }
+          install_dependencies alinux
+          dnf install -y python3 systemd
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+      - name: Check deployment scripts
+        run: node --test scripts/deploy-web.test.mjs
+      - name: Read pinned Rust toolchain
+        id: rust-toolchain
+        shell: bash
+        run: |
+          channel=$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)
+          test -n "$channel"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ steps.rust-toolchain.outputs.channel }}
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: web-server -> target
+          shared-key: web-alinux3
+      - name: Build and test natively on Alibaba Cloud Linux 3
+        shell: bash
+        run: |
+          cargo tree --locked --manifest-path web-server/Cargo.toml --edges normal,build --prefix none > /tmp/web-dependencies
+          if grep -E '^(tauri([ -]|$)|gtk([ -]|$)|gdk([ -]|$)|webkit2gtk|wry([ -]|$)|tray-icon|muda([ -]|$)|arboard([ -]|$))' /tmp/web-dependencies; then
+            exit 1
+          fi
+          cargo test --locked --manifest-path web-server/Cargo.toml
+          cargo build --locked --manifest-path web-server/Cargo.toml
+          # Frontend production assets are built in the Ubuntu job; exercise static serving here.
+          mkdir -p "$RUNNER_TEMP/web-assets"
+          printf '<!doctype html><title>Web runtime check</title>' > "$RUNNER_TEMP/web-assets/index.html"
+          bash scripts/smoke-web.sh web-server/target/debug/cc-switch-web "$RUNNER_TEMP/web-assets"

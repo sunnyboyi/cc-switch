@@ -1,14 +1,21 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(feature = "desktop")]
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
+#[cfg(feature = "desktop")]
 use serde_json::json;
+#[cfg(feature = "desktop")]
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc::error::TrySendError;
+#[cfg(not(feature = "desktop"))]
+use tokio::sync::mpsc::Sender;
+#[cfg(feature = "desktop")]
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 use crate::error::AppError;
+#[cfg(feature = "desktop")]
 use crate::services::s3_sync;
 use crate::services::sync_protocol::should_trigger_auto_sync_for_table;
 use crate::settings::{self, S3SyncSettings};
@@ -75,6 +82,7 @@ fn persist_auto_sync_error(settings: &mut S3SyncSettings, error: &AppError) {
     let _ = settings::update_s3_sync_status(settings.status.clone());
 }
 
+#[cfg(feature = "desktop")]
 fn emit_auto_sync_status_updated(app: &AppHandle, status: &str, error: Option<&str>) {
     let payload = match error {
         Some(message) => json!({
@@ -93,6 +101,7 @@ fn emit_auto_sync_status_updated(app: &AppHandle, status: &str, error: Option<&s
     }
 }
 
+#[cfg(feature = "desktop")]
 async fn run_auto_sync_upload(
     db: &crate::database::Database,
     app: &AppHandle,
@@ -134,6 +143,7 @@ pub fn notify_db_changed(table: &str) {
     let _ = enqueue_change_signal(tx, table);
 }
 
+#[cfg(feature = "desktop")]
 pub fn start_worker(db: Arc<crate::database::Database>, app: tauri::AppHandle) {
     if DB_CHANGE_TX.get().is_some() {
         return;
@@ -145,11 +155,12 @@ pub fn start_worker(db: Arc<crate::database::Database>, app: tauri::AppHandle) {
         return;
     }
 
-    tauri::async_runtime::spawn(async move {
+    crate::runtime::spawn(async move {
         run_worker_loop(db, rx, app).await;
     });
 }
 
+#[cfg(feature = "desktop")]
 async fn run_worker_loop(
     db: Arc<crate::database::Database>,
     mut rx: Receiver<String>,
