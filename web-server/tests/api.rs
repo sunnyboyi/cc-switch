@@ -69,6 +69,35 @@ async fn authenticated_provider_lifecycle_preserves_files_and_rejects_conflicts(
         assets.path().into(),
     );
     let root = "/api/apps/claude/providers";
+    assert_eq!(
+        call(
+            &app,
+            Method::POST,
+            "/api/command/start_mcp_connectivity_checks",
+            Some(TOKEN),
+            Some(json!({"args":{"serverIds":[], "channelId":"invalid"}}))
+        )
+        .await
+        .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let (_, batch) = call(
+        &app,
+        Method::POST,
+        "/api/command/start_mcp_connectivity_checks",
+        Some(TOKEN),
+        Some(json!({"args":{"serverIds":[], "channelId":uuid::Uuid::new_v4().to_string()}})),
+    )
+    .await;
+    assert!(batch.is_string());
+    call(
+        &app,
+        Method::POST,
+        "/api/command/cancel_mcp_connectivity_checks",
+        Some(TOKEN),
+        Some(json!({"args":{"batchId":batch}})),
+    )
+    .await;
 
     assert_eq!(
         call(&app, Method::GET, root, None, None).await.0,
@@ -301,7 +330,13 @@ async fn authenticated_provider_lifecycle_preserves_files_and_rejects_conflicts(
         .is_file());
     assert!(!home.path().join(".cc-switch/cc-switch.db").exists());
     let reopened = Database::init().unwrap();
-    assert_eq!(reopened.get_all_providers("claude").unwrap().len(), 2);
+    assert_eq!(
+        reopened
+            .get_all_providers(&cc_switch_lib::AppType::Claude)
+            .unwrap()
+            .len(),
+        2
+    );
     management_lifecycle(&app, home.path()).await;
     cc_switch_lib::mode::controller::detach_all(&app_state).await;
     if app_state.proxy_service.is_running().await {
@@ -473,6 +508,88 @@ async fn management_lifecycle(app: &Router, home: &std::path::Path) {
         .await
         .get("web-mcp")
         .is_none());
+
+    assert_eq!(
+        rpc(app, "get_unreadable_mcp_servers", json!({})).await,
+        json!([])
+    );
+    rpc(app, "refresh_local_skill_metadata", json!({})).await;
+    assert_eq!(
+        rpc(app, "get_skill_repo_tokens", json!({})).await["hosts"],
+        json!([])
+    );
+    rpc(
+        app,
+        "set_skill_repo_token",
+        json!({"host":"example.invalid", "token":"isolated-web-token"}),
+    )
+    .await;
+    assert!(
+        std::path::PathBuf::from(std::env::var_os("CC_SWITCH_TEST_HOME").unwrap())
+            .join(".cc-switch-web/skill-repo-tokens.json")
+            .exists()
+    );
+    assert_eq!(
+        rpc(app, "get_skill_repo_tokens", json!({})).await["hosts"],
+        json!(["example.invalid"])
+    );
+    rpc(
+        app,
+        "delete_skill_repo_token",
+        json!({"host":"example.invalid"}),
+    )
+    .await;
+
+    rpc(
+        app,
+        "upsert_mcp_server",
+        json!({"server": {
+            "id":"mcp-check", "name":"Connectivity fixture",
+            "server":{"command":home.join("__missing_mcp_check__"), "args":[]}, "apps":{}, "tags":[]
+        }}),
+    )
+    .await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/events")
+                .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let mut checks = response.into_body();
+    checks.frame().await.unwrap().unwrap();
+    let channel = uuid::Uuid::new_v4().to_string();
+    rpc(
+        app,
+        "start_mcp_connectivity_checks",
+        json!({"serverIds":["mcp-check"], "channelId":channel}),
+    )
+    .await;
+    let frame = tokio::time::timeout(std::time::Duration::from_secs(5), checks.frame())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap()
+        .into_data()
+        .unwrap();
+    let frame = std::str::from_utf8(&frame)
+        .unwrap()
+        .trim()
+        .strip_prefix("data:")
+        .unwrap()
+        .trim();
+    let result: Value = serde_json::from_str(frame).unwrap();
+    assert_eq!(result["channelId"], channel);
+    assert_eq!(
+        result["payload"],
+        json!({"serverId":"mcp-check", "status":"failed"})
+    );
+    drop(checks);
+    rpc(app, "delete_mcp_server", json!({"id":"mcp-check"})).await;
 
     // SSE carries operation metadata, never provider keys or prompt contents.
     let response = app
@@ -704,7 +821,6 @@ async fn management_lifecycle(app: &Router, home: &std::path::Path) {
         "get_provider_stats",
         "get_model_stats",
         "get_usage_first_date",
-        "get_usage_data_sources",
         "get_model_pricing",
         "get_models_dev_sync_config",
     ] {

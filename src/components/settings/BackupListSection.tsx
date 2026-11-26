@@ -32,11 +32,16 @@ interface BackupListSectionProps {
   showStorageOverview?: boolean;
   backupIntervalHours?: number;
   backupRetainCount?: number;
+  backupMaxTotalMb?: number;
   onSettingsChange: (updates: {
     backupIntervalHours?: number;
     backupRetainCount?: number;
+    backupMaxTotalMb?: number;
   }) => void;
 }
+
+/** Size limit choices in GB; 0 means unlimited (the default). */
+const MAX_TOTAL_GB_OPTIONS = [1, 2, 5, 10, 20];
 
 function formatBackupDate(isoString: string): string {
   try {
@@ -65,6 +70,7 @@ export function BackupListSection({
   showStorageOverview = true,
   backupIntervalHours,
   backupRetainCount,
+  backupMaxTotalMb,
   onSettingsChange,
 }: BackupListSectionProps) {
   const { t } = useTranslation();
@@ -171,6 +177,7 @@ export function BackupListSection({
 
   const intervalValue = String(backupIntervalHours ?? 24);
   const retainValue = String(backupRetainCount ?? 10);
+  const maxTotalValue = String(backupMaxTotalMb ?? 0);
 
   return (
     <div className="space-y-4">
@@ -255,6 +262,46 @@ export function BackupListSection({
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label className="text-sm">
+              {t("settings.backupManager.maxTotalLabel", {
+                defaultValue: "Backup Size Limit",
+              })}
+            </Label>
+            <Select
+              value={maxTotalValue}
+              onValueChange={(v) =>
+                onSettingsChange({ backupMaxTotalMb: Number(v) })
+              }
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">
+                  {t("settings.backupManager.maxTotalUnlimited", {
+                    defaultValue: "No limit",
+                  })}
+                </SelectItem>
+                {MAX_TOTAL_GB_OPTIONS.map((gb) => (
+                  <SelectItem key={gb} value={String(gb * 1024)}>
+                    {`${gb} GB`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <p className="text-xs text-fg-2">
+          {t("settings.backupManager.maxTotalHint", {
+            defaultValue:
+              "Off by default. When set, the oldest backups are deleted once the backups folder grows past this size. The newest backup and any backup used by a restore are always kept, so the folder can stay above the limit when a single backup is larger. Applies at the next backup or the daily maintenance run.",
+          })}
+        </p>
       </div>
 
       {/* Backup list */}

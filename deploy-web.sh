@@ -25,11 +25,11 @@ install_dependencies() {
     ubuntu)
       sudo apt-get update
       sudo apt-get install -y --no-install-recommends \
-        ca-certificates curl git openssl xz-utils build-essential cmake pkg-config libssl-dev
+        ca-certificates curl git openssl tar gzip xz-utils build-essential cmake pkg-config libssl-dev
       ;;
     alinux)
       sudo dnf install -y \
-        ca-certificates curl git openssl xz gcc gcc-c++ make cmake pkgconf-pkg-config openssl-devel
+        ca-certificates curl git openssl tar gzip xz gcc gcc-c++ make cmake pkgconf-pkg-config openssl-devel
       ;;
     *) fail '不支持的软件包管理器。'; return 1 ;;
   esac

@@ -33,6 +33,7 @@ import { toast } from "@/lib/toast";
 import { copyText } from "@/lib/clipboard";
 import type { AppId } from "@/lib/api";
 import { settingsApi } from "@/lib/api";
+import { syncLanguageFromSettings } from "@/i18n";
 import { DEFAULT_VISIBLE_APPS } from "@/config/appConfig";
 import type { SettingsSection, View } from "@/lib/navigation";
 import { hasUnsavedChanges, discardUnsavedChanges } from "@/lib/unsavedChanges";
@@ -212,6 +213,9 @@ function Workspace({ logout }: { logout: () => void }) {
       .then(() => client.invalidateQueries({ queryKey: ["usage"] }))
       .catch((error) => console.warn("[Web] 模型定价自动同步失败", error));
   }, [client]);
+  useEffect(() => {
+    void syncLanguageFromSettings(settings.data?.language);
+  }, [settings.data?.language]);
   const visibleApps = { ...DEFAULT_VISIBLE_APPS };
   for (const name of Object.keys(visibleApps) as AppId[])
     visibleApps[name] =

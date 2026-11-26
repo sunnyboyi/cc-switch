@@ -1,10 +1,9 @@
 //! 使用统计相关命令
 
 use crate::error::AppError;
-#[cfg(not(feature = "desktop"))]
 use crate::services::model_pricing::ModelPricingInfo;
 #[cfg(feature = "desktop")]
-use crate::services::model_pricing::{ModelPricingInfo, ModelsDevSyncConfig, ModelsDevSyncState};
+use crate::services::model_pricing::{ModelsDevSyncConfig, ModelsDevSyncState};
 #[cfg(feature = "desktop")]
 use crate::services::usage_stats::*;
 #[cfg(feature = "desktop")]
@@ -12,9 +11,9 @@ use crate::store::AppState;
 #[cfg(feature = "desktop")]
 use tauri::State;
 
+/// 数据库操作放到阻塞线程池里跑：同步命令在 Tauri 2 里跑在主线程上。
+/// 不仅聚合扫描会卡窗口，启动定价同步等小查询等待会话同步持有的锁时也会。
 #[cfg(feature = "desktop")]
-/// 统计查询放到阻塞线程池里跑：同步命令在 Tauri 2 里跑在主线程上，
-/// 大范围（如「全部」）的聚合扫描会让整个窗口卡住。
 async fn run_db_query<T, F>(state: &State<'_, AppState>, query: F) -> Result<T, AppError>
 where
     T: Send + 'static,
@@ -26,9 +25,8 @@ where
         .map_err(|error| AppError::Message(format!("用量查询任务失败: {error}")))?
 }
 
-#[cfg(feature = "desktop")]
-/// 获取使用量汇总
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn get_usage_summary(
     state: State<'_, AppState>,
     start_date: Option<i64>,
@@ -49,9 +47,9 @@ pub async fn get_usage_summary(
     .await
 }
 
-#[cfg(feature = "desktop")]
 /// 获取单个会话的使用量汇总（会话阅读页头部）
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn get_session_usage_summary(
     state: State<'_, AppState>,
     app_type: String,
@@ -63,9 +61,9 @@ pub async fn get_session_usage_summary(
     .await
 }
 
-#[cfg(feature = "desktop")]
 /// 获取按 app_type 拆分的使用量汇总
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn get_usage_summary_by_app(
     state: State<'_, AppState>,
     start_date: Option<i64>,
@@ -84,9 +82,8 @@ pub async fn get_usage_summary_by_app(
     .await
 }
 
-#[cfg(feature = "desktop")]
-/// 获取每日趋势
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn get_usage_trends(
     state: State<'_, AppState>,
     start_date: Option<i64>,
@@ -107,9 +104,9 @@ pub async fn get_usage_trends(
     .await
 }
 
-#[cfg(feature = "desktop")]
 /// 获取最早有用量记录的日期（本地 `YYYY-MM-DD`），没有记录时为 null
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn get_usage_first_date(
     state: State<'_, AppState>,
     app_type: Option<String>,
@@ -126,9 +123,8 @@ pub async fn get_usage_first_date(
     .await
 }
 
-#[cfg(feature = "desktop")]
-/// 获取 Provider 统计
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn get_provider_stats(
     state: State<'_, AppState>,
     start_date: Option<i64>,
@@ -149,9 +145,8 @@ pub async fn get_provider_stats(
     .await
 }
 
-#[cfg(feature = "desktop")]
-/// 获取模型统计
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn get_model_stats(
     state: State<'_, AppState>,
     start_date: Option<i64>,
@@ -172,9 +167,8 @@ pub async fn get_model_stats(
     .await
 }
 
-#[cfg(feature = "desktop")]
-/// 获取请求日志列表
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn get_request_logs(
     state: State<'_, AppState>,
     filters: LogFilters,
@@ -187,9 +181,8 @@ pub async fn get_request_logs(
     .await
 }
 
-#[cfg(feature = "desktop")]
-/// 获取单个请求详情
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn get_request_detail(
     state: State<'_, AppState>,
     request_id: String,
@@ -197,15 +190,16 @@ pub async fn get_request_detail(
     run_db_query(&state, move |db| db.get_request_detail(&request_id)).await
 }
 
-#[cfg(feature = "desktop")]
-/// 获取模型定价列表
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn get_model_pricing(state: State<'_, AppState>) -> Result<Vec<ModelPricingInfo>, AppError> {
-    get_model_pricing_for_db(&state.db)
+#[cfg(feature = "desktop")]
+pub async fn get_model_pricing(
+    state: State<'_, AppState>,
+) -> Result<Vec<ModelPricingInfo>, AppError> {
+    run_db_query(&state, get_model_pricing_blocking).await
 }
 
-pub(crate) fn get_model_pricing_for_db(
-    db: &crate::Database,
+pub(crate) fn get_model_pricing_blocking(
+    db: &crate::database::Database,
 ) -> Result<Vec<ModelPricingInfo>, AppError> {
     log::info!("获取模型定价列表");
     db.ensure_model_pricing_seeded()?;
@@ -254,10 +248,9 @@ pub(crate) fn get_model_pricing_for_db(
     Ok(pricing)
 }
 
-#[cfg(feature = "desktop")]
-/// 更新模型定价
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn update_model_pricing(
+#[cfg(feature = "desktop")]
+pub async fn update_model_pricing(
     state: State<'_, AppState>,
     model_id: String,
     display_name: String,
@@ -266,80 +259,96 @@ pub fn update_model_pricing(
     cache_read_cost: String,
     cache_creation_cost: String,
 ) -> Result<(), AppError> {
-    crate::services::model_pricing::update_model_pricing(
-        &state.db,
-        ModelPricingInfo {
-            model_id,
-            display_name,
-            input_cost_per_million: input_cost,
-            output_cost_per_million: output_cost,
-            cache_read_cost_per_million: cache_read_cost,
-            cache_creation_cost_per_million: cache_creation_cost,
-        },
-    )?;
-    Ok(())
+    run_db_query(&state, move |db| {
+        crate::services::model_pricing::update_model_pricing(
+            db,
+            ModelPricingInfo {
+                model_id,
+                display_name,
+                input_cost_per_million: input_cost,
+                output_cost_per_million: output_cost,
+                cache_read_cost_per_million: cache_read_cost,
+                cache_creation_cost_per_million: cache_creation_cost,
+            },
+        )?;
+        Ok(())
+    })
+    .await
 }
 
-#[cfg(feature = "desktop")]
 /// 批量更新模型定价（models.dev 自动同步仅触发一次历史成本回填）
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn update_model_pricing_batch(
+#[cfg(feature = "desktop")]
+pub async fn update_model_pricing_batch(
     state: State<'_, AppState>,
     entries: Vec<ModelPricingInfo>,
 ) -> Result<usize, AppError> {
-    crate::services::model_pricing::update_model_pricing_batch(&state.db, entries)
+    run_db_query(&state, move |db| {
+        crate::services::model_pricing::update_model_pricing_batch(db, entries)
+    })
+    .await
 }
 
-#[cfg(feature = "desktop")]
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn get_models_dev_sync_config(
+#[cfg(feature = "desktop")]
+pub async fn get_models_dev_sync_config(
     state: State<'_, AppState>,
 ) -> Result<ModelsDevSyncState, AppError> {
-    crate::services::model_pricing::get_models_dev_sync_state(&state.db)
+    run_db_query(
+        &state,
+        crate::services::model_pricing::get_models_dev_sync_state,
+    )
+    .await
 }
 
-#[cfg(feature = "desktop")]
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn save_models_dev_sync_config(
+#[cfg(feature = "desktop")]
+pub async fn save_models_dev_sync_config(
     state: State<'_, AppState>,
     config: ModelsDevSyncConfig,
 ) -> Result<(), AppError> {
-    crate::services::model_pricing::save_models_dev_sync_config(&state.db, config)
+    run_db_query(&state, move |db| {
+        crate::services::model_pricing::save_models_dev_sync_config(db, config)
+    })
+    .await
 }
 
-#[cfg(feature = "desktop")]
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn record_models_dev_sync_result(
+#[cfg(feature = "desktop")]
+pub async fn record_models_dev_sync_result(
     state: State<'_, AppState>,
     synced_at: Option<i64>,
     error: Option<String>,
 ) -> Result<(), AppError> {
-    crate::services::model_pricing::record_models_dev_sync_result(&state.db, synced_at, error)
+    run_db_query(&state, move |db| {
+        crate::services::model_pricing::record_models_dev_sync_result(db, synced_at, error)
+    })
+    .await
 }
 
-#[cfg(feature = "desktop")]
-/// 检查 Provider 使用限额
+/// 拉取 models.dev 数据，走后端代理感知 HTTP 客户端，避免 WebView 直连在代理环境下超时
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn check_provider_limits(
+pub async fn fetch_models_dev() -> Result<String, String> {
+    crate::services::model_pricing::fetch_models_dev().await
+}
+
+#[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
+pub async fn delete_model_pricing(
     state: State<'_, AppState>,
-    provider_id: String,
-    app_type: String,
-) -> Result<crate::services::usage_stats::ProviderLimitStatus, AppError> {
-    state.db.check_provider_limits(&provider_id, &app_type)
+    model_id: String,
+) -> Result<(), AppError> {
+    run_db_query(&state, move |db| {
+        crate::services::model_pricing::delete_model_pricing(db, &model_id)?;
+        log::info!("已删除模型定价: {model_id}");
+        Ok(())
+    })
+    .await
 }
 
-#[cfg(feature = "desktop")]
-/// 删除模型定价
-#[cfg_attr(feature = "desktop", tauri::command)]
-pub fn delete_model_pricing(state: State<'_, AppState>, model_id: String) -> Result<(), AppError> {
-    crate::services::model_pricing::delete_model_pricing(&state.db, &model_id)?;
-    log::info!("已删除模型定价: {model_id}");
-    Ok(())
-}
-
-#[cfg(feature = "desktop")]
 /// 手动触发会话日志同步
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn sync_session_usage(
     state: State<'_, AppState>,
 ) -> Result<crate::services::session_usage::SessionSyncResult, AppError> {
@@ -368,14 +377,19 @@ fn finish_codex_rebuild(
     result
 }
 
-#[cfg(feature = "desktop")]
 /// 备份数据库后，仅重建 Codex session 用量。锁覆盖 backup → reset → import
 /// 整个序列，避免后台同步在清理和重导之间插入数据。
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn rebuild_codex_usage(
     state: State<'_, AppState>,
 ) -> Result<crate::services::session_usage::SessionSyncResult, AppError> {
-    let db = state.db.clone();
+    rebuild_codex_usage_for_db(state.db.clone()).await
+}
+
+pub(crate) async fn rebuild_codex_usage_for_db(
+    db: std::sync::Arc<crate::database::Database>,
+) -> Result<crate::services::session_usage::SessionSyncResult, AppError> {
     let _guard = crate::services::session_usage::session_sync_mutex()
         .lock()
         .await;
@@ -389,13 +403,12 @@ pub async fn rebuild_codex_usage(
     .map_err(|error| AppError::Message(format!("Codex 用量重建任务失败: {error}")))?
 }
 
-#[cfg(feature = "desktop")]
-/// 获取数据来源分布
+/// 取 USD 对各显示币种的汇率：主源 open.er-api.com，失败退 floatrates.com。
+/// 只用于金额换算显示；失败时前端保留上次缓存或手填的汇率。
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn get_usage_data_sources(
-    state: State<'_, AppState>,
-) -> Result<Vec<crate::services::session_usage::DataSourceSummary>, AppError> {
-    crate::services::session_usage::get_data_source_breakdown(&state.db)
+pub async fn fetch_exchange_rates(
+) -> Result<crate::services::exchange_rates::FetchedExchangeRates, AppError> {
+    crate::services::exchange_rates::fetch_usd_rates().await
 }
 
 #[cfg(test)]
@@ -403,27 +416,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn codex_rebuild_notifies_when_reimport_is_empty() {
+    fn codex_rebuild_notifies_on_empty_or_failed_reimport() {
         crate::usage_events::take_test_notify_count();
-
         let result = finish_codex_rebuild(Ok(
             crate::services::session_usage::SessionSyncResult::default(),
         ))
         .expect("空重导应成功");
-
         assert_eq!(result.imported, 0);
         assert_eq!(crate::usage_events::take_test_notify_count(), 1);
-    }
 
-    #[test]
-    fn codex_rebuild_notifies_when_reimport_fails_after_reset() {
-        crate::usage_events::take_test_notify_count();
-
-        let result = finish_codex_rebuild(Err(AppError::Message(
+        let err = finish_codex_rebuild(Err(AppError::Message(
             "synthetic reimport failure".to_string(),
         )));
-
-        assert!(result.is_err());
+        assert!(err.is_err());
         assert_eq!(crate::usage_events::take_test_notify_count(), 1);
     }
 }

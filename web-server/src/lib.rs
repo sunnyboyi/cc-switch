@@ -162,6 +162,22 @@ async fn command(
             "参数必须是对象".into(),
         ));
     }
+    if command == "start_mcp_connectivity_checks" {
+        let ids: Vec<String> = serde_json::from_value(request.args["serverIds"].clone())
+            .map_err(|_| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "MCP IDs 无效".into()))?;
+        let channel = request.args["channelId"]
+            .as_str()
+            .filter(|id| uuid::Uuid::parse_str(id).is_ok())
+            .ok_or_else(|| ApiError(StatusCode::UNPROCESSABLE_ENTITY, "MCP channel 无效".into()))?
+            .to_owned();
+        let changes = state.changes.clone();
+        return blocking(state, move |app| {
+            let id = cc_switch_lib::web_support::start_mcp_connectivity_checks(app, ids, move |result| {
+                changes.send(json!({"command": "mcp-connectivity-result", "channelId": channel, "payload": result})).is_ok()
+            })?;
+            Ok(json!(id))
+        }).await;
+    }
     let services = state.skills.clone();
     if matches!(
         command.as_str(),
@@ -355,7 +371,7 @@ fn find(state: &AppState, app: &AppType, id: &str) -> Result<Provider, ApiError>
     state
         .db
         // Match the list snapshot, including metadata merged from endpoints.
-        .get_all_providers(app.as_str())?
+        .get_all_providers(app)?
         .shift_remove(id)
         .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "Provider not found".into()))
 }
