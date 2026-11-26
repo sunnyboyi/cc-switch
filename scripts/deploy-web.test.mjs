@@ -58,6 +58,16 @@ for (const distribution of ["ubuntu", "alinux"]) {
       result.stdout,
       distribution === "ubuntu" ? /libssl-dev/ : /openssl-devel/,
     );
+    for (const archiveTool of [
+      "tar",
+      "gzip",
+      distribution === "ubuntu" ? "xz-utils" : "xz",
+    ]) {
+      assert.ok(
+        result.stdout.split(/\s+/).includes(archiveTool),
+        `missing ${archiveTool}`,
+      );
+    }
     assert.doesNotMatch(result.stdout, /gtk|webkit|soup|appindicator|xvfb/i);
   });
 }
