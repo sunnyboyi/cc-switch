@@ -1,10 +1,11 @@
+use crate::error::AppError;
 #[cfg(feature = "desktop")]
 use std::time::Duration;
 #[cfg(feature = "desktop")]
 use tauri::{AppHandle, State};
-#[cfg(feature = "desktop")]
-use tauri_plugin_opener::OpenerExt;
 
+#[cfg(feature = "desktop")]
+use super::run_db_task;
 use crate::hermes_config;
 #[cfg(feature = "desktop")]
 use crate::store::AppState;
@@ -18,31 +19,25 @@ const HERMES_WEB_OFFLINE_ERROR: &str = "hermes_web_offline";
 // Hermes Provider Commands
 // ============================================================================
 
-#[cfg(feature = "desktop")]
 /// Import providers from Hermes live config to database.
 ///
 /// Hermes uses additive mode — users may already have providers
 /// configured in config.yaml.
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn import_hermes_providers_from_live(state: State<'_, AppState>) -> Result<usize, String> {
-    crate::services::provider::import_hermes_providers_from_live(state.inner())
-        .map_err(|e| e.to_string())
+#[cfg(feature = "desktop")]
+pub async fn import_hermes_providers_from_live(
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    run_db_task(&state, |state| {
+        crate::services::provider::import_hermes_providers_from_live(state)
+    })
+    .await
 }
 
 /// Get provider names in the Hermes live config.
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn get_hermes_live_provider_ids() -> Result<Vec<String>, String> {
-    hermes_config::get_providers()
-        .map(|providers| providers.keys().cloned().collect())
-        .map_err(|e| e.to_string())
-}
-
-/// Get a single Hermes provider fragment from live config.
-#[cfg_attr(feature = "desktop", tauri::command)]
-pub fn get_hermes_live_provider(
-    #[allow(non_snake_case)] providerId: String,
-) -> Result<Option<serde_json::Value>, String> {
-    hermes_config::get_provider(&providerId).map_err(|e| e.to_string())
+pub fn get_hermes_live_provider_ids() -> Result<Vec<String>, AppError> {
+    hermes_config::get_providers().map(|providers| providers.keys().cloned().collect())
 }
 
 // ============================================================================
@@ -52,8 +47,8 @@ pub fn get_hermes_live_provider(
 /// Get Hermes model config (model section of config.yaml). Read-only — writes
 /// happen implicitly through `apply_switch_defaults` when switching providers.
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn get_hermes_model_config() -> Result<Option<hermes_config::HermesModelConfig>, String> {
-    hermes_config::get_model_config().map_err(|e| e.to_string())
+pub fn get_hermes_model_config() -> Result<Option<hermes_config::HermesModelConfig>, AppError> {
+    hermes_config::get_model_config()
 }
 
 // ============================================================================
@@ -61,33 +56,32 @@ pub fn get_hermes_model_config() -> Result<Option<hermes_config::HermesModelConf
 // ============================================================================
 
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn get_hermes_memory(kind: hermes_config::MemoryKind) -> Result<String, String> {
-    hermes_config::read_memory(kind).map_err(|e| e.to_string())
+pub fn get_hermes_memory(kind: hermes_config::MemoryKind) -> Result<String, AppError> {
+    hermes_config::read_memory(kind)
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn set_hermes_memory(kind: hermes_config::MemoryKind, content: String) -> Result<(), String> {
-    hermes_config::write_memory(kind, &content).map_err(|e| e.to_string())
+pub fn set_hermes_memory(kind: hermes_config::MemoryKind, content: String) -> Result<(), AppError> {
+    hermes_config::write_memory(kind, &content)
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn get_hermes_memory_limits() -> Result<hermes_config::HermesMemoryLimits, String> {
-    hermes_config::read_memory_limits().map_err(|e| e.to_string())
+pub fn get_hermes_memory_limits() -> Result<hermes_config::HermesMemoryLimits, AppError> {
+    hermes_config::read_memory_limits()
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub fn set_hermes_memory_enabled(
     kind: hermes_config::MemoryKind,
     enabled: bool,
-) -> Result<hermes_config::HermesWriteOutcome, String> {
-    hermes_config::set_memory_enabled(kind, enabled).map_err(|e| e.to_string())
+) -> Result<hermes_config::HermesWriteOutcome, AppError> {
+    hermes_config::set_memory_enabled(kind, enabled)
 }
 
 // ============================================================================
 // Hermes Web UI launcher
 // ============================================================================
 
-#[cfg(feature = "desktop")]
 /// Probe the local Hermes Web UI (FastAPI) and open it in the system browser.
 ///
 /// Port discovery priority:
@@ -101,6 +95,7 @@ pub fn set_hermes_memory_enabled(
 /// there is no need (and no way) for CC Switch to inject it — we just open
 /// the URL and let Hermes handle auth.
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn open_hermes_web_ui(app: AppHandle, path: Option<String>) -> Result<(), String> {
     let port = std::env::var("HERMES_WEB_PORT")
         .ok()
@@ -130,8 +125,7 @@ pub async fn open_hermes_web_ui(app: AppHandle, path: Option<String>) -> Result<
         _ => format!("{base}/"),
     };
 
-    app.opener()
-        .open_url(&target, None::<String>)
+    crate::host_open::open_url(&app, &target)
         .map_err(|e| format!("failed to open Hermes Web UI: {e}"))
 }
 
@@ -140,10 +134,11 @@ pub async fn open_hermes_web_ui(app: AppHandle, path: Option<String>) -> Result<
 /// since Hermes startup can take several seconds and may fail outright if
 /// the `hermes-agent[web]` extras are missing.
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn launch_hermes_dashboard() -> Result<(), String> {
     tokio::task::spawn_blocking(|| {
-        let command_line = crate::commands::misc::hermes_dashboard_command_line()?;
-        crate::commands::misc::launch_terminal_running(&command_line, "hermes_dashboard")
+        let command_line = crate::commands::terminal_launch::hermes_dashboard_command_line()?;
+        crate::commands::terminal_launch::launch_terminal_running(&command_line, "hermes_dashboard")
     })
     .await
     .map_err(|e| format!("launch task join error: {e}"))?

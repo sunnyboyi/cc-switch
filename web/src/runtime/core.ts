@@ -4,10 +4,17 @@ import { generateUUID } from "@/utils/uuid";
 let token = "";
 const uploads = new Map<string, File>();
 const listeners = new EventTarget();
+const channels = new Map<
+  string,
+  { channel: Channel<unknown>; pending: Set<string> }
+>();
+const batchChannels = new Map<string, string>();
 
 export function setAccessToken(value: string) {
   token = value;
   uploads.clear();
+  channels.clear();
+  batchChannels.clear();
 }
 
 export function getAccessToken() {
@@ -18,12 +25,10 @@ export function isTauri() {
   return false;
 }
 
-// Session IPC channels are outside the web management feature set.
+// MCP results use the authenticated event stream; other desktop IPC stays unsupported.
 export class Channel<T> {
   onmessage?: (message: T) => void;
-  constructor() {
-    throw new Error("Web 管理入口尚不支持桌面 IPC Channel");
-  }
+  readonly id = generateUUID();
 }
 
 export async function command<T>(
@@ -80,6 +85,31 @@ export async function invoke<T>(
   name: string,
   args: Record<string, unknown> = {},
 ): Promise<T> {
+  if (name === "start_mcp_connectivity_checks") {
+    const channel = args.onResult as Channel<unknown>;
+    channels.set(channel.id, {
+      channel,
+      pending: new Set(args.serverIds as string[]),
+    });
+    try {
+      const batch = await command<string>(name, {
+        serverIds: args.serverIds,
+        channelId: channel.id,
+      });
+      if (channels.get(channel.id)?.pending.size)
+        batchChannels.set(batch, channel.id);
+      else channels.delete(channel.id);
+      return batch as T;
+    } catch (error) {
+      channels.delete(channel.id);
+      throw error;
+    }
+  }
+  if (name === "cancel_mcp_connectivity_checks") {
+    const batch = String(args.batchId);
+    channels.delete(batchChannels.get(batch) ?? "");
+    batchChannels.delete(batch);
+  }
   if (name === "update_tray_menu") {
     // Shared mutation hooks refresh desktop chrome. In this entry, refresh the
     // browser queries instead; there is no tray process to contact.
@@ -184,7 +214,23 @@ export function connectChanges(
           const event = JSON.parse(line.slice(5)) as {
             command: string;
             scope?: string;
+            channelId?: string;
+            payload?: unknown;
           };
+          if (event.command === "mcp-connectivity-result") {
+            const id = event.channelId ?? "";
+            const entry = channels.get(id);
+            entry?.channel.onmessage?.(event.payload);
+            const result = event.payload as { serverId: string };
+            entry?.pending.delete(result.serverId);
+            if (entry?.pending.size === 0) {
+              channels.delete(id);
+              for (const [batch, channel] of batchChannels) {
+                if (channel === id) batchChannels.delete(batch);
+              }
+            }
+            continue;
+          }
           if (event.command === "apply_profile")
             emitLocalEvent("profile-applied", { scope: event.scope });
           onChange();

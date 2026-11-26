@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import {
+  Channel,
   command,
   connectChanges,
   invoke,
@@ -104,4 +105,48 @@ test("ZIP upload requires a browser-selected file and external links reject exec
     invoke("open_external", { url: "javascript:alert(1)" }),
   ).rejects.toThrow("HTTP");
   expect(fetch).not.toHaveBeenCalled();
+});
+
+test("MCP channels receive authenticated results and stop after cancellation", async () => {
+  let stream!: ReadableStreamDefaultController<Uint8Array>;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      if (url === "/api/events")
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              stream = controller;
+            },
+          }),
+        );
+      return Response.json(
+        url.endsWith("start_mcp_connectivity_checks") ? "fixture-batch" : null,
+      );
+    }),
+  );
+  setAccessToken("fixture-secret");
+  const status = vi.fn();
+  const stop = connectChanges(vi.fn(), status);
+  await vi.waitFor(() => expect(status).toHaveBeenCalledWith(true));
+  const channel = new Channel<{ serverId: string; status: string }>();
+  channel.onmessage = vi.fn();
+  await invoke("start_mcp_connectivity_checks", {
+    serverIds: ["fixture", "pending"],
+    onResult: channel,
+  });
+  const result = { serverId: "fixture", status: "failed" };
+  const frame = new TextEncoder().encode(
+    `data: ${JSON.stringify({ command: "mcp-connectivity-result", channelId: channel.id, payload: result })}\n\n`,
+  );
+  stream.enqueue(frame);
+  await vi.waitFor(() =>
+    expect(channel.onmessage).toHaveBeenCalledWith(result),
+  );
+  await invoke("cancel_mcp_connectivity_checks", { batchId: "fixture-batch" });
+  stream.enqueue(frame);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(channel.onmessage).toHaveBeenCalledTimes(1);
+  stop();
+  stream.close();
 });

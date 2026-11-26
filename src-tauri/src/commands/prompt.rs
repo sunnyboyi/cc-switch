@@ -1,3 +1,4 @@
+use crate::error::AppError;
 #[cfg(feature = "desktop")]
 use indexmap::IndexMap;
 use std::str::FromStr;
@@ -16,64 +17,64 @@ use crate::services::prompt::PromptService;
 #[cfg(feature = "desktop")]
 use crate::store::AppState;
 
-#[cfg(feature = "desktop")]
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn get_prompts(
     app: String,
     state: State<'_, AppState>,
-) -> Result<IndexMap<String, Prompt>, String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
-    PromptService::get_prompts(&state, app_type).map_err(|e| e.to_string())
+) -> Result<IndexMap<String, Prompt>, AppError> {
+    let app_type = AppType::from_str(&app)?;
+    PromptService::get_prompts(&state, app_type)
 }
 
-#[cfg(feature = "desktop")]
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn upsert_prompt(
     app: String,
     id: String,
     prompt: Prompt,
     state: State<'_, AppState>,
-) -> Result<(), String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
-    PromptService::upsert_prompt(&state, app_type, &id, prompt).map_err(|e| e.to_string())
+) -> Result<(), AppError> {
+    let app_type = AppType::from_str(&app)?;
+    PromptService::upsert_prompt(&state, app_type, &id, prompt)
 }
 
-#[cfg(feature = "desktop")]
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn delete_prompt(
     app: String,
     id: String,
     state: State<'_, AppState>,
-) -> Result<(), String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
-    PromptService::delete_prompt(&state, app_type, &id).map_err(|e| e.to_string())
+) -> Result<(), AppError> {
+    let app_type = AppType::from_str(&app)?;
+    PromptService::delete_prompt(&state, app_type, &id)
 }
 
-#[cfg(feature = "desktop")]
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn enable_prompt(
     app: String,
     id: String,
     state: State<'_, AppState>,
-) -> Result<(), String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
-    PromptService::enable_prompt(&state, app_type, &id).map_err(|e| e.to_string())
+) -> Result<(), AppError> {
+    let app_type = AppType::from_str(&app)?;
+    PromptService::enable_prompt(&state, app_type, &id)
 }
 
-#[cfg(feature = "desktop")]
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn import_prompt_from_file(
     app: String,
     state: State<'_, AppState>,
-) -> Result<String, String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
-    PromptService::import_from_file(&state, app_type).map_err(|e| e.to_string())
+) -> Result<String, AppError> {
+    let app_type = AppType::from_str(&app)?;
+    PromptService::import_from_file(&state, app_type)
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub async fn get_current_prompt_file_content(app: String) -> Result<Option<String>, String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
-    PromptService::get_current_file_content(app_type).map_err(|e| e.to_string())
+pub async fn get_current_prompt_file_content(app: String) -> Result<Option<String>, AppError> {
+    let app_type = AppType::from_str(&app)?;
+    PromptService::get_current_file_content(app_type)
 }
 
 /// 提示词目标文件的位置：`path` 是完整路径（复制用），`displayPath` 把主目录写成 `~`（显示用）。
@@ -86,8 +87,8 @@ pub struct PromptFileLocation {
 
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn get_prompt_file_location(app: String) -> Result<PromptFileLocation, String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
-    let path = crate::prompt_files::prompt_file_path(&app_type).map_err(|e| e.to_string())?;
+    let app_type = AppType::from_str(&app)?;
+    let path = crate::prompt_files::prompt_file_path(&app_type)?;
     Ok(PromptFileLocation {
         path: path.to_string_lossy().to_string(),
         display_path: crate::prompt_files::display_path(&path),

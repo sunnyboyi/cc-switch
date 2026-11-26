@@ -12,6 +12,22 @@ use crate::{
     AppError, AppState, AppType, McpService, ProfileService, PromptService, ProviderService,
 };
 
+pub fn start_mcp_connectivity_checks(
+    state: &AppState,
+    server_ids: Vec<String>,
+    on_result: impl Fn(Value) -> bool + Send + 'static,
+) -> Result<String, AppError> {
+    let servers = McpService::get_all_servers(state)?;
+    Ok(crate::services::mcp_connectivity::start_checks(
+        servers
+            .into_iter()
+            .filter(|(id, _)| server_ids.contains(id))
+            .map(|(_, server)| server)
+            .collect(),
+        move |result| on_result(json!(result)),
+    ))
+}
+
 pub fn initialize_outbound_proxy(db: &crate::Database) -> Result<(), AppError> {
     crate::proxy::http_client::init(db.get_global_proxy_url()?.as_deref()).map_err(message)
 }
@@ -65,6 +81,9 @@ pub fn dispatch(
 ) -> Result<Value, AppError> {
     let db = &state.db;
     match command {
+        "get_unreadable_providers" => {
+            reply!(ProviderService::list_unreadable(state, app(&args, "app")?))
+        }
         "get_providers" => reply!(ProviderService::list(state, app(&args, "app")?)),
         "get_current_provider" => reply!(ProviderService::current(state, app(&args, "app")?)),
         "get_provider_editor_view" => {
@@ -147,16 +166,7 @@ pub fn dispatch(
             text(&args, "providerId")?,
             arg(&args, "url")?
         )),
-        "update_endpoint_last_used" => reply!(ProviderService::update_endpoint_last_used(
-            state,
-            app(&args, "app")?,
-            text(&args, "providerId")?,
-            arg(&args, "url")?
-        )),
         "get_universal_providers" => reply!(ProviderService::list_universal(state)),
-        "get_universal_provider" => {
-            reply!(ProviderService::get_universal(state, text(&args, "id")?))
-        }
         "upsert_universal_provider" => reply!(ProviderService::upsert_universal(
             state,
             arg(&args, "provider")?
@@ -247,7 +257,7 @@ pub fn dispatch(
             arg(&args, "tool")?,
             arg(&args, "wslShellByTool")?
         )),
-        "run_tool_lifecycle_action" => wait!(commands::run_tool_lifecycle_action(
+        "run_tool_lifecycle_action" => wait!(commands::run_web_tool_lifecycle_action(
             arg(&args, "tools")?,
             arg(&args, "action")?,
             arg(&args, "wslShellByTool")?,
@@ -268,19 +278,21 @@ pub fn dispatch(
         }
         "test_proxy_url" => wait!(commands::test_proxy_url(arg(&args, "url")?)),
         "scan_local_proxies" => output(crate::runtime::block_on(commands::scan_local_proxies())),
-        "get_upstream_proxy_status" => output(commands::get_upstream_proxy_status()),
-        "list_db_backups" => reply!(commands::list_db_backups()),
+        "get_upstream_proxy_status" => output(
+            json!({"enabled": crate::proxy::http_client::get_current_proxy_url().is_some(), "proxyUrl": crate::proxy::http_client::get_current_proxy_url()}),
+        ),
+        "list_db_backups" => reply!(crate::Database::list_backups()),
         "create_db_backup" => {
             let path = db
                 .backup_database_file()?
                 .ok_or_else(|| AppError::Database("Web 数据库尚未创建".into()))?;
             output(path.file_name().unwrap_or_default().to_string_lossy())
         }
-        "rename_db_backup" => reply!(commands::rename_db_backup(
-            arg(&args, "oldFilename")?,
-            arg(&args, "newName")?
+        "rename_db_backup" => reply!(crate::Database::rename_backup(
+            &arg::<String>(&args, "oldFilename")?,
+            &arg::<String>(&args, "newName")?
         )),
-        "delete_db_backup" => reply!(commands::delete_db_backup(arg(&args, "filename")?)),
+        "delete_db_backup" => reply!(crate::Database::delete_backup(text(&args, "filename")?)),
         "restore_db_backup" => wait!(commands::restore_db_backup_for_state(
             state,
             arg(&args, "filename")?
@@ -292,6 +304,11 @@ pub fn dispatch(
             "platform": std::env::consts::OS,
         })),
 
+        "cancel_mcp_connectivity_checks" => {
+            commands::cancel_mcp_connectivity_checks(arg(&args, "batchId")?);
+            output(())
+        }
+        "get_unreadable_mcp_servers" => reply!(McpService::list_unreadable(state)),
         "get_mcp_servers" => reply!(McpService::get_all_servers(state)),
         "upsert_mcp_server" => reply!(McpService::upsert_server(state, arg(&args, "server")?)),
         "delete_mcp_server" => reply!(McpService::delete_server(state, text(&args, "id")?)),
@@ -314,8 +331,6 @@ pub fn dispatch(
                 outcomes
             }))
         }
-        "validate_mcp_command" => wait!(commands::validate_mcp_command(arg(&args, "cmd")?)),
-
         "get_prompts" => reply!(PromptService::get_prompts(state, app(&args, "app")?)),
         "upsert_prompt" => reply!(PromptService::upsert_prompt(
             state,
@@ -399,6 +414,12 @@ pub fn dispatch(
                 .set_current_profile_id(ProfileScope::parse(text(&args, "scope")?)?.as_str(), None))
         }
 
+        "refresh_local_skill_metadata" => reply!(SkillService::refresh_local_skill_metadata(db)),
+        "get_skill_repo_tokens" => reply!(skills.repo_token_list()),
+        "set_skill_repo_token" => {
+            reply!(skills.set_repo_token(text(&args, "host")?, text(&args, "token")?))
+        }
+        "delete_skill_repo_token" => reply!(skills.delete_repo_token(text(&args, "host")?)),
         "get_installed_skills" => reply!(SkillService::get_all_installed(db)),
         "get_skill_backups" => reply!(SkillService::list_backups()),
         "delete_skill_backup" => {
@@ -452,9 +473,9 @@ pub fn dispatch(
         "get_cc_switch_skills_dir" => wait!(commands::get_cc_switch_skills_dir()),
         "get_skill_repos" => reply!(db.get_skill_repos()),
         "add_skill_repo" => {
-            let repo: crate::services::skill::SkillRepo = arg(&args, "repo")?;
-            SkillService::validate_repo_ref(&repo.owner, &repo.name, &repo.branch)
-                .map_err(message)?;
+            let mut repo: crate::services::skill::SkillRepo = arg(&args, "repo")?;
+            repo.host = repo.host.trim().to_ascii_lowercase();
+            SkillService::validate_repo(&repo).map_err(message)?;
             db.save_skill_repo(&repo)?;
             output(true)
         }
@@ -539,32 +560,31 @@ pub fn dispatch(
             state,
             text(&args, "host")?
         )),
-        "get_proxy_config_for_app" => wait!(db.get_proxy_config_for_app(text(&args, "appType")?)),
+        "get_proxy_config_for_app" => wait!(db.get_proxy_config_for_app(&app(&args, "appType")?)),
         "update_proxy_config_for_app" => {
             let mut config: crate::proxy::types::AppProxyConfig = arg(&args, "config")?;
             let app = AppType::from_str(&config.app_type)?;
-            if !app.supports_local_proxy() {
+            if !app.spec().local_proxy {
                 return Err(AppError::InvalidInput("该应用不支持本地路由".into()));
             }
             config.enabled = crate::mode::current::is_proxy(&app);
             let circuit = crate::proxy::CircuitBreakerConfig::from(&config);
-            let app_type = config.app_type.clone();
+            let app_type = app;
             crate::runtime::block_on(db.update_proxy_config_for_app(config))?;
             wait!(state
                 .proxy_service
                 .update_circuit_breaker_config_for_app(&app_type, circuit))
         }
-        "get_pricing_model_source" => wait!(db.get_pricing_model_source(text(&args, "appType")?)),
+        "get_pricing_model_source" => wait!(db.get_pricing_model_source(&app(&args, "appType")?)),
         "set_pricing_model_source" => {
-            wait!(db.set_pricing_model_source(text(&args, "appType")?, text(&args, "value")?))
+            wait!(db.set_pricing_model_source(&app(&args, "appType")?, text(&args, "value")?))
         }
         "get_auto_failover_enabled" => output(
-            crate::runtime::block_on(db.get_proxy_config_for_app(text(&args, "appType")?))?
+            crate::runtime::block_on(db.get_proxy_config_for_app(&app(&args, "appType")?))?
                 .auto_failover_enabled,
         ),
         "get_failover_queue" => {
-            let app = text(&args, "appType")?;
-            commands::require_failover_app(app).map_err(message)?;
+            let app = &commands::require_failover_app(text(&args, "appType")?).map_err(message)?;
             let providers = db.get_all_providers(app)?;
             output(
                 db.get_failover_queue(app)?
@@ -578,11 +598,16 @@ pub fn dispatch(
             )
         }
         "get_available_providers_for_failover" => {
-            let app = text(&args, "appType")?;
-            commands::require_failover_app(app).map_err(message)?;
+            let app = &commands::require_failover_app(text(&args, "appType")?).map_err(message)?;
+            let queued: std::collections::HashSet<_> = db
+                .get_failover_queue(app)?
+                .into_iter()
+                .map(|item| item.provider_id)
+                .collect();
             output(
-                db.get_available_providers_for_failover(app)?
-                    .into_iter()
+                db.get_all_providers(app)?
+                    .into_values()
+                    .filter(|provider| !queued.contains(&provider.id))
                     .filter(|provider| {
                         crate::proxy::provider_router::provider_supports_failover(app, provider)
                     })
@@ -590,14 +615,14 @@ pub fn dispatch(
             )
         }
         "add_to_failover_queue" | "remove_from_failover_queue" => {
-            let app = text(&args, "appType")?;
+            let app = &commands::require_failover_app(text(&args, "appType")?).map_err(message)?;
             let id = text(&args, "providerId")?;
-            commands::require_failover_app(app).map_err(message)?;
             if command == "add_to_failover_queue" {
                 commands::require_failover_provider(db, app, id).map_err(message)?;
                 db.add_to_failover_queue(app, id)?;
             } else {
-                db.remove_from_failover_queue(app, id)?;
+                crate::runtime::block_on(state.proxy_service.remove_from_failover_queue(app, id))
+                    .map_err(message)?;
             }
             output(())
         }
@@ -608,19 +633,11 @@ pub fn dispatch(
             arg(&args, "enabled")?
         )),
         "get_provider_health" => {
-            wait!(db.get_provider_health(text(&args, "providerId")?, text(&args, "appType")?))
+            wait!(db.get_provider_health(text(&args, "providerId")?, &app(&args, "appType")?))
         }
         // The desktop command currently has no in-memory stats interface either.
-        "get_circuit_breaker_stats" => output(Value::Null),
-        "reset_circuit_breaker" => wait!(commands::reset_circuit_breaker_for_state(
-            None,
-            state,
-            arg(&args, "providerId")?,
-            arg(&args, "appType")?
-        )),
-
-        "get_claude_common_config_snippet" => reply!(db.get_config_snippet("claude")),
-        "get_common_config_snippet" => reply!(db.get_config_snippet(text(&args, "appType")?)),
+        "get_claude_common_config_snippet" => reply!(db.get_config_snippet(&AppType::Claude)),
+        "get_common_config_snippet" => reply!(db.get_config_snippet(&app(&args, "appType")?)),
         "get_model_pricing_file_path" => {
             output(model_pricing::model_pricing_file_path().to_string_lossy())
         }
@@ -671,7 +688,7 @@ pub fn dispatch(
         "stream_check_provider" => {
             let app = app(&args, "appType")?;
             let provider = db
-                .get_provider_by_id(text(&args, "providerId")?, app.as_str())?
+                .get_provider_by_id(text(&args, "providerId")?, &app)?
                 .ok_or_else(|| AppError::InvalidInput("供应商不存在".into()))?;
             wait!(
                 crate::services::stream_check::StreamCheckService::check_with_retry(
@@ -743,7 +760,7 @@ pub fn dispatch(
         )),
         "get_request_detail" => reply!(db.get_request_detail(text(&args, "requestId")?)),
         "get_models_dev_sync_config" => reply!(model_pricing::get_models_dev_sync_state(db)),
-        "get_model_pricing" => reply!(commands::get_model_pricing_for_db(db)),
+        "get_model_pricing" => reply!(commands::get_model_pricing_blocking(db)),
         "save_models_dev_sync_config" => reply!(model_pricing::save_models_dev_sync_config(
             db,
             arg(&args, "config")?
@@ -772,21 +789,17 @@ pub fn dispatch(
             db,
             text(&args, "modelId")?
         )),
-        "check_provider_limits" => {
-            reply!(db.check_provider_limits(text(&args, "providerId")?, text(&args, "appType")?))
-        }
         "get_session_usage_last_sync" => {
             output(crate::services::session_usage::last_sync_completed_at())
         }
+        "rebuild_codex_usage" => wait!(commands::rebuild_codex_usage_for_db(db.clone())),
+        "fetch_exchange_rates" => wait!(commands::fetch_exchange_rates()),
         "sync_session_usage" => {
             let _guard = crate::runtime::block_on(
                 crate::services::session_usage::session_sync_mutex().lock(),
             );
             output(crate::services::session_usage::sync_all_unlocked(db))
         }
-        "get_usage_data_sources" => reply!(
-            crate::services::session_usage::get_data_source_breakdown(db)
-        ),
         "get_custom_icons" => reply!(crate::services::provider::icon::list_library_icons(db)),
         "add_custom_icon" => reply!(crate::services::provider::icon::add_library_icon(
             db,
@@ -802,17 +815,19 @@ pub fn dispatch(
             db,
             text(&args, "id")?
         )),
-        "get_claude_code_config_path" => wait!(commands::get_claude_code_config_path()),
+        "get_claude_code_config_path" => {
+            output(crate::config::get_claude_settings_path().to_string_lossy())
+        }
         "get_config_dir" => wait!(commands::get_config_dir(arg(&args, "app")?)),
-        "get_app_config_path" => wait!(commands::get_app_config_path()),
+        "get_app_config_path" => output(crate::config::get_app_config_path().to_string_lossy()),
         "check_env_conflicts" => reply!(commands::check_env_conflicts(arg(&args, "app")?)),
         "get_hermes_live_provider_ids" => reply!(commands::get_hermes_live_provider_ids()),
-        "get_hermes_live_provider" => reply!(commands::get_hermes_live_provider(arg(
+        "get_hermes_live_provider" => reply!(crate::hermes_config::get_provider(text(
             &args,
             "providerId"
         )?)),
         "get_hermes_model_config" => reply!(commands::get_hermes_model_config()),
-        "is_portable_mode" => wait!(commands::is_portable_mode()),
+        "is_portable_mode" => output(false),
         "get_agy_models" => wait!(commands::get_agy_models(
             arg(&args, "apiKey")?,
             arg(&args, "baseUrl")?

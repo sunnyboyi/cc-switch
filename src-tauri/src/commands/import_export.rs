@@ -1,5 +1,3 @@
-#![allow(non_snake_case)]
-
 #[cfg(feature = "desktop")]
 use serde_json::{json, Value};
 #[cfg(feature = "desktop")]
@@ -9,13 +7,12 @@ use tauri::State;
 #[cfg(feature = "desktop")]
 use tauri_plugin_dialog::DialogExt;
 
-#[cfg(not(feature = "desktop"))]
+#[cfg(feature = "desktop")]
+use crate::commands::sync_support::success_payload_with_warning;
 use crate::commands::sync_support::{post_sync_warning_from_result, run_post_import_sync};
 #[cfg(feature = "desktop")]
-use crate::commands::sync_support::{
-    post_sync_warning_from_result, run_post_import_sync, success_payload_with_warning,
-};
 use crate::database::backup::BackupEntry;
+#[cfg(feature = "desktop")]
 use crate::database::Database;
 use crate::error::AppError;
 #[cfg(feature = "desktop")]
@@ -35,9 +32,9 @@ where
 
 // ─── File import/export ──────────────────────────────────────
 
-#[cfg(feature = "desktop")]
 /// 导出数据库为 SQL 备份
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn export_config_to_file(
     #[allow(non_snake_case)] filePath: String,
     state: State<'_, AppState>,
@@ -57,9 +54,9 @@ pub async fn export_config_to_file(
     .map_err(|e: AppError| e.to_string())
 }
 
-#[cfg(feature = "desktop")]
 /// 从 SQL 备份导入数据库
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn import_config_from_file(
     #[allow(non_snake_case)] filePath: String,
     state: State<'_, AppState>,
@@ -88,8 +85,8 @@ pub async fn import_config_from_file(
     .map_err(|e: AppError| e.to_string())
 }
 
-#[cfg(feature = "desktop")]
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn sync_current_providers_live(state: State<'_, AppState>) -> Result<Value, String> {
     let db = state.db.clone();
     crate::runtime::spawn_blocking(move || {
@@ -107,9 +104,8 @@ pub async fn sync_current_providers_live(state: State<'_, AppState>) -> Result<V
 
 // ─── File dialogs ────────────────────────────────────────────
 
-#[cfg(feature = "desktop")]
-/// 保存文件对话框
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn save_file_dialog<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     #[allow(non_snake_case)] defaultName: String,
@@ -124,9 +120,8 @@ pub async fn save_file_dialog<R: tauri::Runtime>(
     Ok(result.map(|p| p.to_string()))
 }
 
-#[cfg(feature = "desktop")]
-/// 打开文件对话框
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn open_file_dialog<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<Option<String>, String> {
@@ -139,9 +134,8 @@ pub async fn open_file_dialog<R: tauri::Runtime>(
     Ok(result.map(|p| p.to_string()))
 }
 
-#[cfg(feature = "desktop")]
-/// 打开 ZIP 文件选择对话框
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn open_zip_file_dialog<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<Option<String>, String> {
@@ -156,9 +150,9 @@ pub async fn open_zip_file_dialog<R: tauri::Runtime>(
 
 // ─── Database backup management ─────────────────────────────
 
-#[cfg(feature = "desktop")]
 /// Manually create a database backup
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn create_db_backup(state: State<'_, AppState>) -> Result<String, String> {
     let db = state.db.clone();
     crate::runtime::spawn_blocking(move || match db.backup_database_file()? {
@@ -177,13 +171,17 @@ pub async fn create_db_backup(state: State<'_, AppState>) -> Result<String, Stri
 
 /// List all database backup files
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn list_db_backups() -> Result<Vec<BackupEntry>, String> {
-    Database::list_backups().map_err(|e| e.to_string())
+#[cfg(feature = "desktop")]
+pub async fn list_db_backups() -> Result<Vec<BackupEntry>, String> {
+    // 备份文件锁的持有方（定时备份、恢复）会在锁内等数据库，不能在主线程上等它。
+    Ok(crate::runtime::spawn_blocking(Database::list_backups)
+        .await
+        .map_err(|e| e.to_string())??)
 }
 
-#[cfg(feature = "desktop")]
 /// Restore database from a backup file
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn restore_db_backup(
     state: State<'_, AppState>,
     filename: String,
@@ -191,7 +189,7 @@ pub async fn restore_db_backup(
     restore_db_backup_for_state(state.inner(), filename).await
 }
 
-pub async fn restore_db_backup_for_state(
+pub(crate) async fn restore_db_backup_for_state(
     state: &AppState,
     filename: String,
 ) -> Result<String, String> {
@@ -220,23 +218,34 @@ pub async fn restore_db_backup_for_state(
 
 /// Rename a database backup file
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn rename_db_backup(
+#[cfg(feature = "desktop")]
+pub async fn rename_db_backup(
     #[allow(non_snake_case)] oldFilename: String,
     #[allow(non_snake_case)] newName: String,
 ) -> Result<String, String> {
-    Database::rename_backup(&oldFilename, &newName).map_err(|e| e.to_string())
+    Ok(
+        crate::runtime::spawn_blocking(move || Database::rename_backup(&oldFilename, &newName))
+            .await
+            .map_err(|e| e.to_string())??,
+    )
 }
 
 /// Delete a database backup file
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn delete_db_backup(filename: String) -> Result<(), String> {
-    Database::delete_backup(&filename).map_err(|e| e.to_string())
+#[cfg(feature = "desktop")]
+pub async fn delete_db_backup(filename: String) -> Result<(), String> {
+    Ok(
+        crate::runtime::spawn_blocking(move || Database::delete_backup(&filename))
+            .await
+            .map_err(|e| e.to_string())??,
+    )
 }
 
 // ─── Backup storage overview ─────────────────────────────────
 
 /// 列出本机各类备份的位置与大小
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn list_backup_locations(
 ) -> Result<Vec<crate::services::backup_storage::BackupLocation>, String> {
     crate::runtime::spawn_blocking(crate::services::backup_storage::list_locations)
@@ -246,18 +255,20 @@ pub async fn list_backup_locations(
 
 /// 删除一类备份（只认类别 id），返回释放的字节数
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn delete_backup_location(id: String) -> Result<u64, String> {
-    crate::runtime::spawn_blocking(move || crate::services::backup_storage::delete_location(&id))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())
+    Ok(crate::runtime::spawn_blocking(move || {
+        crate::services::backup_storage::delete_location(&id)
+    })
+    .await
+    .map_err(|e| e.to_string())??)
 }
 
-#[cfg(feature = "desktop")]
 /// 在文件管理器中显示一类备份所在的目录
 #[cfg_attr(feature = "desktop", tauri::command)]
+#[cfg(feature = "desktop")]
 pub async fn reveal_backup_location(id: String) -> Result<bool, String> {
-    let dir = crate::services::backup_storage::location_dir(&id).map_err(|e| e.to_string())?;
+    let dir = crate::services::backup_storage::location_dir(&id)?;
     tauri_plugin_opener::reveal_item_in_dir(&dir).map_err(|e| format!("打开文件夹失败: {e}"))?;
     Ok(true)
 }

@@ -47,7 +47,7 @@ fn web_import_migrates_only_its_copy_and_keeps_settings_and_backups_separate() {
     assert_eq!(
         web.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
             .unwrap(),
-        24
+        28
     );
     assert_eq!(
         web.query_row("SELECT value FROM import_fixture", [], |row| row
@@ -163,7 +163,7 @@ fn web_import_migrates_only_its_copy_and_keeps_settings_and_backups_separate() {
 
     let future_path = home.path().join("future.db");
     let future = Connection::open(&future_path).unwrap();
-    future.execute_batch("PRAGMA user_version=25").unwrap();
+    future.execute_batch("PRAGMA user_version=29").unwrap();
     drop(future);
     let rejected = home.path().join("rejected.db");
     assert!(web_storage::copy_database(&future_path, &rejected).is_err());
@@ -176,7 +176,7 @@ fn storage_preflight_checks_versions_without_changing_existing_databases() {
     use cc_switch_lib::web_storage::{prepare_storage_at, DATABASE_NAME};
 
     let directory = tempfile::tempdir().unwrap();
-    for version in [0, 21, 23, 24, 25] {
+    for version in [0, 21, 23, 24, 25, 28, 29] {
         let source = directory.path().join(format!("source-v{version}"));
         let destination = directory.path().join(format!("web-v{version}"));
         std::fs::create_dir_all(&source).unwrap();
@@ -186,7 +186,7 @@ fn storage_preflight_checks_versions_without_changing_existing_databases() {
         drop(conn);
         let before = std::fs::read(&path).unwrap();
         let result = prepare_storage_at(&source, &destination);
-        let supported = (1..=24).contains(&version);
+        let supported = (1..=28).contains(&version);
         assert_eq!(result.is_ok(), supported, "v{version}: {result:?}");
         assert_eq!(std::fs::read(&path).unwrap(), before);
         let web_path = destination.join(DATABASE_NAME);

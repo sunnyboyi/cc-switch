@@ -1,15 +1,15 @@
 //! 项目 Profile 管理命令
 
+#[cfg(feature = "desktop")]
+use crate::error::AppError;
 use serde::Serialize;
 #[cfg(feature = "desktop")]
 use tauri::{Emitter, State};
 
+#[cfg(feature = "desktop")]
+use super::run_db_task;
 use crate::database::Profile;
-#[cfg(not(feature = "desktop"))]
-use crate::services::profile::ProfilePayload;
-#[cfg(feature = "desktop")]
 use crate::services::profile::{ProfilePayload, ProfileScope, ProfileService};
-#[cfg(feature = "desktop")]
 use crate::store::AppState;
 
 #[derive(Debug, Serialize)]
@@ -60,12 +60,12 @@ pub struct ProfilesResponse {
     pub current_ids: CurrentProfileIds,
 }
 
-#[cfg(feature = "desktop")]
 /// Profile 应用完成后的统一收尾：发事件 + 重建托盘菜单
 ///
 /// 只对项目所属分组内的应用发 provider-switched。UI 与托盘两个入口必须
 /// 共用此函数，保证事件 payload 形状一致（前端 App.tsx 的
 /// provider-switched 监听依赖该形状）。
+#[cfg(feature = "desktop")]
 pub fn emit_profile_apply_events(
     app: &tauri::AppHandle,
     state: &AppState,
@@ -73,8 +73,7 @@ pub fn emit_profile_apply_events(
     scope: ProfileScope,
 ) {
     for app_type in scope.apps().iter() {
-        let app_str = app_type.as_str();
-        let (_, auto_failover_enabled) = state.db.get_proxy_flags_sync(app_str);
+        let (_, auto_failover_enabled) = state.db.get_proxy_flags_sync(app_type);
         let proxy_enabled = crate::mode::current::is_proxy(app_type);
         let provider_id = crate::mode::current::provider_for(
             &state.db,
@@ -85,7 +84,7 @@ pub fn emit_profile_apply_events(
         .flatten()
         .unwrap_or_default();
         let event_data = serde_json::json!({
-            "appType": app_str,
+            "appType": app_type.as_str(),
             "proxyEnabled": proxy_enabled,
             "autoFailoverEnabled": auto_failover_enabled,
             "providerId": provider_id,
@@ -103,23 +102,27 @@ pub fn emit_profile_apply_events(
     crate::tray::refresh_tray_menu(app);
 }
 
-#[cfg(feature = "desktop")]
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn list_profiles(state: State<'_, AppState>) -> Result<ProfilesResponse, String> {
-    let profiles = ProfileService::list(&state).map_err(|e| e.to_string())?;
+#[cfg(feature = "desktop")]
+pub async fn list_profiles(state: State<'_, AppState>) -> Result<ProfilesResponse, String> {
+    let state = state.inner().clone();
+    crate::runtime::spawn_blocking(move || list_profiles_blocking(&state))
+        .await
+        .map_err(|e| format!("读取项目列表任务失败: {e}"))?
+}
+
+fn list_profiles_blocking(state: &AppState) -> Result<ProfilesResponse, String> {
+    let profiles = ProfileService::list(state)?;
     let current_ids = CurrentProfileIds {
         claude: state
             .db
-            .get_current_profile_id(ProfileScope::Claude.as_str())
-            .map_err(|e| e.to_string())?,
+            .get_current_profile_id(ProfileScope::Claude.as_str())?,
         claude_desktop: state
             .db
-            .get_current_profile_id(ProfileScope::ClaudeDesktop.as_str())
-            .map_err(|e| e.to_string())?,
+            .get_current_profile_id(ProfileScope::ClaudeDesktop.as_str())?,
         codex: state
             .db
-            .get_current_profile_id(ProfileScope::Codex.as_str())
-            .map_err(|e| e.to_string())?,
+            .get_current_profile_id(ProfileScope::Codex.as_str())?,
     };
     Ok(ProfilesResponse {
         profiles: profiles.into_iter().map(ProfileDto::from).collect(),
@@ -127,67 +130,89 @@ pub fn list_profiles(state: State<'_, AppState>) -> Result<ProfilesResponse, Str
     })
 }
 
+/// 项目的写入口（这里的命令和托盘的两项）互相串行：主线程不再替它们排队。`apply` 收尾才写
+/// 当前项目指针、自动保存会整行回写旧项目，期间的清除 / 重命名 / 删除会被盖掉；新建的快照会
+/// 拍到切到一半的状态。
+pub(crate) static PROFILE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[cfg(feature = "desktop")]
+async fn profile_mutation<T, E, F>(state: &State<'_, AppState>, task: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    E: Into<String> + Send + 'static,
+    F: FnOnce(&AppState) -> Result<T, E> + Send + 'static,
+{
+    let _serial = PROFILE_LOCK.lock().await;
+    run_db_task(state, task).await
+}
+
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn create_profile(
+#[cfg(feature = "desktop")]
+pub async fn create_profile(
     state: State<'_, AppState>,
     name: String,
     scope: String,
 ) -> Result<ProfileDto, String> {
-    let scope = ProfileScope::parse(&scope).map_err(|e| e.to_string())?;
-    ProfileService::create(&state, &name, scope)
-        .map(ProfileDto::from)
-        .map_err(|e| e.to_string())
+    let scope = ProfileScope::parse(&scope)?;
+    profile_mutation(&state, move |state| {
+        ProfileService::create(state, &name, scope).map(ProfileDto::from)
+    })
+    .await
 }
 
-#[cfg(feature = "desktop")]
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn update_profile(
+#[cfg(feature = "desktop")]
+pub async fn update_profile(
     state: State<'_, AppState>,
     id: String,
     name: Option<String>,
     resnapshot: Option<bool>,
     scope: Option<String>,
 ) -> Result<ProfileDto, String> {
-    let scope = scope
-        .map(|s| ProfileScope::parse(&s))
-        .transpose()
-        .map_err(|e| e.to_string())?;
-    ProfileService::update(&state, &id, name, resnapshot.unwrap_or(false), scope)
-        .map(ProfileDto::from)
-        .map_err(|e| e.to_string())
+    let scope = scope.map(|s| ProfileScope::parse(&s)).transpose()?;
+    profile_mutation(&state, move |state| {
+        ProfileService::update(state, &id, name, resnapshot.unwrap_or(false), scope)
+            .map(ProfileDto::from)
+    })
+    .await
 }
 
-#[cfg(feature = "desktop")]
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn delete_profile(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    ProfileService::delete(&state, &id).map_err(|e| e.to_string())
+#[cfg(feature = "desktop")]
+pub async fn delete_profile(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    profile_mutation(&state, move |state| ProfileService::delete(state, &id)).await
 }
 
-#[cfg(feature = "desktop")]
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn clear_current_profile(state: State<'_, AppState>, scope: String) -> Result<(), String> {
-    let scope = ProfileScope::parse(&scope).map_err(|e| e.to_string())?;
-    state
-        .db
-        .set_current_profile_id(scope.as_str(), None)
-        .map_err(|e| e.to_string())
+#[cfg(feature = "desktop")]
+pub async fn clear_current_profile(
+    state: State<'_, AppState>,
+    scope: String,
+) -> Result<(), String> {
+    let scope = ProfileScope::parse(&scope)?;
+    profile_mutation(&state, move |state| {
+        state.db.set_current_profile_id(scope.as_str(), None)
+    })
+    .await
 }
 
-#[cfg(feature = "desktop")]
 /// 应用项目快照（只作用于发起页所属分组内的应用）。
 ///
-/// 注意：必须保持同步命令（跑在 Tauri 线程池）——`ProviderService::switch`
-/// 内部使用 block_on 获取切换锁，放进 async 命令会在运行时线程上 panic。
+/// `ProviderService::switch` 用 block_on 拿切换锁，整段只能在阻塞线程池里跑
+/// （同托盘的「应用项目」入口）。
 #[cfg_attr(feature = "desktop", tauri::command)]
-pub fn apply_profile(
+#[cfg(feature = "desktop")]
+pub async fn apply_profile(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     id: String,
     scope: String,
 ) -> Result<Vec<String>, String> {
-    let scope = ProfileScope::parse(&scope).map_err(|e| e.to_string())?;
-    let warnings = ProfileService::apply(&state, &id, scope).map_err(|e| e.to_string())?;
-    emit_profile_apply_events(&app, &state, &id, scope);
-    Ok(warnings)
+    let scope = ProfileScope::parse(&scope)?;
+    profile_mutation(&state, move |state| {
+        let warnings = ProfileService::apply(state, &id, scope)?;
+        emit_profile_apply_events(&app, state, &id, scope);
+        Ok::<_, AppError>(warnings)
+    })
+    .await
 }
