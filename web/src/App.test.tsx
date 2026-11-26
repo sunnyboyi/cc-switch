@@ -73,6 +73,9 @@ beforeEach(() => {
           },
           sessionAutoSyncEnabled: false,
         },
+        list_sessions: [],
+        sync_session_index: { running: false, processed: 0, total: 0 },
+        clear_session_index: true,
         get_providers: {},
         get_current_provider: "",
         get_app_mode: {
@@ -236,4 +239,22 @@ test("apps and settings reuse navigation, persist web preferences, and show the 
   expect(screen.getByRole("textbox", { name: "Claude Code" })).toHaveValue(
     "/srv/claude",
   );
+});
+
+test("session navigation reuses the shared page and persists the content search switch", async () => {
+  const user = await connect();
+  await user.click(screen.getByRole("button", { name: "会话", exact: true }));
+  await screen.findByRole("heading", { name: "会话", exact: true });
+  await waitFor(() => expect(calls).toContain("list_sessions"));
+  expect(
+    await screen.findByRole("textbox", { name: "搜索会话" }),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "会话的更多操作" }));
+  await user.click(
+    await screen.findByRole("menuitemcheckbox", { name: "搜索消息正文" }),
+  );
+  await waitFor(() =>
+    expect(savedSettings?.sessionContentSearchEnabled).toBe(true),
+  );
+  await waitFor(() => expect(calls).toContain("sync_session_index"));
 });

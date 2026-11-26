@@ -118,9 +118,13 @@ export const PathChip = memo(function PathChip({
   const copyLabel = t("sessionManager.reader.path.copy", {
     defaultValue: "复制路径",
   });
-  const revealLabel = t("sessionManager.reader.path.reveal", {
-    defaultValue: "在 Finder 中显示",
-  });
+  const revealLabel = import.meta.env.VITE_WEB_MODE
+    ? t("sessionManager.reader.path.showOnServer", {
+        defaultValue: "Show server path",
+      })
+    : t("sessionManager.reader.path.reveal", {
+        defaultValue: "在 Finder 中显示",
+      });
 
   return (
     <span

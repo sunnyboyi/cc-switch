@@ -143,6 +143,8 @@ const linkButton =
 
 interface SessionManagerPageProps {
   appId: string;
+  allowTerminal?: boolean;
+  onContentSearchChange?: (enabled: boolean) => Promise<boolean>;
   /** 侧栏上当前的应用（从 Claude Desktop 进来时要提示一句） */
   fromApp?: AppId;
   /** 打开设置里的「首选终端」 */
@@ -151,6 +153,8 @@ interface SessionManagerPageProps {
 
 export function SessionManagerPage({
   appId,
+  allowTerminal = true,
+  onContentSearchChange,
   fromApp,
   onOpenTerminalSettings,
 }: SessionManagerPageProps) {
@@ -317,6 +321,11 @@ export function SessionManagerPage({
   const contentSearchToggle = useMutation({
     mutationKey: CONTENT_SEARCH_TOGGLE_KEY,
     mutationFn: async (enabled: boolean) => {
+      if (onContentSearchChange) {
+        const saved = await onContentSearchChange(enabled);
+        if (saved && !enabled) await sessionsApi.clearContentIndex();
+        return;
+      }
       const updates = { sessionContentSearchEnabled: enabled };
       updateSettings(updates);
       const saved = await autoSaveSettings(updates);
@@ -413,12 +422,12 @@ export function SessionManagerPage({
   }, [sessions]);
 
   const terminalName = useMemo(() => {
-    if (!isMac()) return null;
+    if (!allowTerminal || !isMac()) return null;
     const value = settings?.preferredTerminal || "terminal";
     const key = `settings.terminal.options.macos.${value}`;
     const label = t(key);
     return label === key ? value : label;
-  }, [settings?.preferredTerminal, t]);
+  }, [allowTerminal, settings?.preferredTerminal, t]);
 
   const copyText = useCallback(
     async (text: string, message: string) => {

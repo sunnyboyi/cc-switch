@@ -68,6 +68,8 @@ pub fn router(state: WebState, web_root: std::path::PathBuf) -> Router {
         .route("/apps/:app/providers/:id/switch", post(switch))
         .route("/command/:command", post(command))
         .route("/events", get(events))
+        .route("/sessions/stream", post(stream_session))
+        .route("/sessions/image", post(session_image))
         .route(
             "/skills/upload/:app",
             post(upload_skill).layer(DefaultBodyLimit::max(25 * 1024 * 1024)),
@@ -103,7 +105,7 @@ async fn response_headers(request: Request, next: Next) -> Response {
         ("cache-control", "no-store"),
         ("x-content-type-options", "nosniff"),
         ("referrer-policy", "no-referrer"),
-        ("content-security-policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"),
+        ("content-security-policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"),
     ] {
         response.headers_mut().insert(name, HeaderValue::from_static(value));
     }
@@ -178,6 +180,13 @@ async fn command(
             Ok(json!(id))
         }).await;
     }
+    if command == "sync_session_index" {
+        let changes = state.changes.clone();
+        let status = cc_switch_lib::web_sessions::sync_index(move |status| {
+            let _ = changes.send(json!({"command":"session-index-status", "payload":status}));
+        });
+        return Ok(Json(json!(status)));
+    }
     let services = state.skills.clone();
     if matches!(
         command.as_str(),
@@ -186,6 +195,11 @@ async fn command(
             | "list_tool_installations"
             | "probe_tool_installations"
             | "prepare_tool_uninstall"
+            | "list_sessions"
+            | "get_session_messages"
+            | "get_session_block_content"
+            | "search_session_content"
+            | "cancel_session_content_search"
     ) {
         // These reads do not modify the database or live configuration. Slow
         // version registries and tool probes must not block management writes.
@@ -250,6 +264,47 @@ async fn command(
         }
         Ok(data)
     }).await
+}
+
+async fn stream_session(
+    State(_state): State<WebState>,
+    Json(source): Json<cc_switch_lib::web_sessions::SessionSource>,
+) -> Response {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(2);
+    tokio::task::spawn_blocking(move || {
+        let result = cc_switch_lib::web_sessions::stream_messages(source, |bytes| {
+            tx.blocking_send(bytes)
+                .map_err(|_| "Session reader disconnected".to_string())
+        });
+        if let Err(message) = result {
+            let mut bytes = json!({"type":"error", "message":message})
+                .to_string()
+                .into_bytes();
+            bytes.push(b'\n');
+            let _ = tx.blocking_send(bytes);
+        }
+    });
+    let stream = async_stream::stream! {
+        while let Some(bytes) = rx.recv().await {
+            yield Ok::<_, std::convert::Infallible>(bytes);
+        }
+    };
+    (
+        [(header::CONTENT_TYPE, "application/x-ndjson")],
+        axum::body::Body::from_stream(stream),
+    )
+        .into_response()
+}
+
+async fn session_image(
+    State(_state): State<WebState>,
+    Json(request): Json<cc_switch_lib::web_sessions::ImageRequest>,
+) -> Result<Response, ApiError> {
+    let bytes = tokio::task::spawn_blocking(move || cc_switch_lib::web_sessions::image(request))
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "图片读取失败".into()))?
+        .map_err(|error| ApiError(StatusCode::BAD_REQUEST, error))?;
+    Ok(([(header::CONTENT_TYPE, "application/octet-stream")], bytes).into_response())
 }
 
 async fn events(

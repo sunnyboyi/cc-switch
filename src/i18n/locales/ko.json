@@ -1715,7 +1715,8 @@
       },
       "path": {
         "copy": "경로 복사",
-        "reveal": "Finder에 표시"
+        "reveal": "Finder에 표시",
+        "showOnServer": "서버 경로 표시"
       },
       "merged": {
         "explored": "파일 {{files}}개 읽음 · 검색 {{searches}}회",
