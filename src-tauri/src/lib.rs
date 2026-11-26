@@ -86,6 +86,8 @@ mod window_fit;
 mod workbuddy_config;
 
 #[cfg(feature = "web")]
+pub mod web_sessions;
+#[cfg(feature = "web")]
 pub mod web_storage;
 #[cfg(feature = "web")]
 pub mod web_support;

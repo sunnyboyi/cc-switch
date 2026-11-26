@@ -226,6 +226,7 @@ pub fn dispatch(
             settings.usage_dashboard_refresh_interval_ms =
                 incoming.usage_dashboard_refresh_interval_ms;
             settings.session_auto_sync_enabled = incoming.session_auto_sync_enabled;
+            settings.session_content_search_enabled = incoming.session_content_search_enabled;
             settings.usage_display = incoming.usage_display;
             settings.skill_sync_method = incoming.skill_sync_method;
             settings.failover_confirmed = incoming.failover_confirmed;
@@ -789,6 +790,9 @@ pub fn dispatch(
             db,
             text(&args, "modelId")?
         )),
+        "get_session_usage_summary" => {
+            reply!(db.get_session_usage_summary(text(&args, "appType")?, text(&args, "sessionId")?))
+        }
         "get_session_usage_last_sync" => {
             output(crate::services::session_usage::last_sync_completed_at())
         }
@@ -867,9 +871,7 @@ pub fn dispatch(
         "set_opencode_default_model" => {
             reply!(commands::set_opencode_default_model(arg(&args, "model")?))
         }
-        _ => Err(AppError::InvalidInput(format!(
-            "Web 入口尚不支持此操作: {command}"
-        ))),
+        _ => crate::web_sessions::dispatch(command, &args).map_err(AppError::InvalidInput),
     }
 }
 

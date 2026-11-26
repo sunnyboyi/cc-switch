@@ -1,4 +1,10 @@
 import { request } from "../api";
+import {
+  cancelSessionRequests,
+  streamSession,
+  sessionImage,
+  downloadMarkdown,
+} from "./sessions";
 import { generateUUID } from "@/utils/uuid";
 
 let token = "";
@@ -11,6 +17,7 @@ const channels = new Map<
 const batchChannels = new Map<string, string>();
 
 export function setAccessToken(value: string) {
+  cancelSessionRequests();
   token = value;
   uploads.clear();
   channels.clear();
@@ -36,25 +43,13 @@ export async function command<T>(
   args: Record<string, unknown> = {},
   expectedRevision?: string,
 ): Promise<T> {
-  try {
-    return await request<T>(token, `/command/${encodeURIComponent(name)}`, {
-      method: "POST",
-      body: JSON.stringify({
-        args,
-        ...(expectedRevision ? { expected_revision: expectedRevision } : {}),
-      }),
-    });
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "status" in error &&
-      error.status === 401
-    ) {
-      window.dispatchEvent(new Event("web-session-expired"));
-    }
-    throw error;
-  }
+  return request<T>(token, `/command/${encodeURIComponent(name)}`, {
+    method: "POST",
+    body: JSON.stringify({
+      args,
+      ...(expectedRevision ? { expected_revision: expectedRevision } : {}),
+    }),
+  });
 }
 
 async function chooseZip(): Promise<string | null> {
@@ -85,6 +80,25 @@ export async function invoke<T>(
   name: string,
   args: Record<string, unknown> = {},
 ): Promise<T> {
+  if (name === "stream_session_messages") {
+    await streamSession(token, args);
+    return undefined as T;
+  }
+  if (name === "get_session_image")
+    return (await sessionImage(token, args)) as T;
+  if (name === "export_session_markdown")
+    return downloadMarkdown(
+      String(args.defaultName),
+      String(args.content),
+    ) as T;
+  if (name === "reveal_session_path") {
+    window.dispatchEvent(
+      new CustomEvent("web-show-directory", { detail: args.path }),
+    );
+    return true as T;
+  }
+  if (name === "launch_session_terminal")
+    throw new Error("请复制恢复命令，在服务器终端执行");
   if (name === "start_mcp_connectivity_checks") {
     const channel = args.onResult as Channel<unknown>;
     channels.set(channel.id, {
@@ -217,6 +231,10 @@ export function connectChanges(
             channelId?: string;
             payload?: unknown;
           };
+          if (event.command === "session-index-status") {
+            emitLocalEvent("session-index-status", event.payload);
+            continue;
+          }
           if (event.command === "mcp-connectivity-result") {
             const id = event.channelId ?? "";
             const entry = channels.get(id);

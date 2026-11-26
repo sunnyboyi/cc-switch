@@ -1716,7 +1716,8 @@
       },
       "path": {
         "copy": "パスをコピー",
-        "reveal": "Finder で表示"
+        "reveal": "Finder で表示",
+        "showOnServer": "サーバー上のパスを表示"
       },
       "merged": {
         "explored": "{{files}} ファイルを参照、{{searches}} 回検索",

@@ -1717,7 +1717,8 @@
       },
       "path": {
         "copy": "Скопировать путь",
-        "reveal": "Показать в Finder"
+        "reveal": "Показать в Finder",
+        "showOnServer": "Показать путь на сервере"
       },
       "merged": {
         "explored": "Прочитано файлов: {{files}}, поисков: {{searches}}",

@@ -1716,7 +1716,8 @@
       },
       "path": {
         "copy": "複製路徑",
-        "reveal": "在 Finder 中顯示"
+        "reveal": "在 Finder 中顯示",
+        "showOnServer": "顯示伺服器路徑"
       },
       "merged": {
         "explored": "查看了 {{files}} 個檔案、搜尋 {{searches}} 次",

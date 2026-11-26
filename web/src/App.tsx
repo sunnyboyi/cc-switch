@@ -48,6 +48,7 @@ const PromptPanel = lazy(() => import("@/components/prompts/PromptPanel"));
 const SkillsPanel = lazy(
   () => import("@/components/skills/UnifiedSkillsPanel"),
 );
+const SessionPage = lazy(() => import("./SessionsPage"));
 const UsagePage = lazy(() => import("./UsagePage"));
 const AppsPage = lazy(() =>
   import("@/components/apps/AppsPage").then((module) => ({
@@ -61,6 +62,7 @@ const pages = [
   "mcp",
   "skills",
   "prompts",
+  "sessions",
   "usage",
   "apps",
   "settings",
@@ -387,6 +389,7 @@ function Workspace({ logout }: { logout: () => void }) {
                 onNavigationBlockedChange={setBusy}
               />
             )}
+            {view === "sessions" && <SessionPage app={app} />}
             {view === "usage" && (
               <UsagePage onOpenProxySettings={() => setProxyOpen(true)} />
             )}
@@ -411,13 +414,13 @@ function Workspace({ logout }: { logout: () => void }) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>服务器目录</DialogTitle>
+            <DialogTitle>服务器路径</DialogTitle>
             <DialogDescription>
               此路径位于运行管理服务的服务器上。
             </DialogDescription>
           </DialogHeader>
           <div className="px-6 pb-6">
-            <Input aria-label="服务器目录路径" value={directory} readOnly />
+            <Input aria-label="服务器路径" value={directory} readOnly />
             <Button
               className="mt-3"
               variant="outline"

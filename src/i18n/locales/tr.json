@@ -1645,7 +1645,8 @@
       },
       "path": {
         "copy": "Yolu kopyala",
-        "reveal": "Finder'da Göster"
+        "reveal": "Finder'da Göster",
+        "showOnServer": "Sunucu yolunu göster"
       },
       "merged": {
         "explored": "{{files}} dosyalarını okuyun, {{searches}} kez arandı",

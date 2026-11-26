@@ -1716,7 +1716,8 @@
       },
       "path": {
         "copy": "Copy path",
-        "reveal": "Show in Finder"
+        "reveal": "Show in Finder",
+        "showOnServer": "Show server path"
       },
       "merged": {
         "explored": "Read {{files}} files, searched {{searches}} times",
